@@ -1,0 +1,14 @@
+{
+  "name": "genesisx-landing",
+  "version": "1.0.0",
+  "description": "GenesisX landing page",
+  "private": true,
+  "scripts": {
+    "dev": "http-server . -p 3000",
+    "build": "echo 'Static site - no build needed'",
+    "start": "http-server . -p 3000"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
