@@ -12,9 +12,12 @@ const tradesRoutes = require("./routes/trades");
 const reconciliationRoutes = require("./routes/reconciliation");
 const meRoutes = require("./routes/me");
 
+const path = require("path");
+
 const app = express();
 
-app.use(helmet());
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(express.static(path.join(__dirname, "..", "public")));
 app.use(
   cors({
     origin: process.env.ALLOWED_ORIGIN || "*", // set this to your real frontend URL(s) in production
