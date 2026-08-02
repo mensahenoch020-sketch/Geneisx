@@ -3,6 +3,6 @@ builder = "NIXPACKS"
 buildCommand = "npm install && npx prisma generate"
 
 [deploy]
-startCommand = "npx prisma migrate deploy && npm start"
+startCommand = "for i in $(seq 1 30); do (echo > /dev/tcp/${PGHOST:-postgres.railway.internal}/5432) >/dev/null 2>&1 && break; echo 'waiting for postgres...'; sleep 2; done; npx prisma migrate deploy && npm start"
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 3
+restartPolicyMaxRetries = 5
