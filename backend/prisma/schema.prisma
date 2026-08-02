@@ -1,0 +1,143 @@
+// GenesisX — database schema
+// Run `npx prisma migrate dev` locally, or `npx prisma migrate deploy` on Railway.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  STAFF
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PROCESSED
+  CANCELLED
+}
+
+enum TradeSide {
+  LONG
+  SHORT
+}
+
+enum TradeStatus {
+  OPEN
+  CLOSED
+}
+
+// Staff/owner accounts — the people who run GenesisX, not clients.
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  role          Role     @default(STAFF)
+  name          String
+  totpSecret    String?  // set once the user enables 2FA
+  totpEnabled   Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+// Client accounts — the people whose Bitcoin is being managed.
+// Separate login from User; a client can only ever see their own data.
+model Client {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  contact      String?
+  walletRef    String?
+  createdAt    DateTime @default(now())
+
+  deposits     Deposit[]
+  withdrawals  Withdrawal[]
+  trades       Trade[]
+
+  @@map("clients")
+}
+
+model Deposit {
+  id        String   @id @default(cuid())
+  client    Client   @relation(fields: [clientId], references: [id])
+  clientId  String
+  amountUsd Decimal  @db.Decimal(18, 2)
+  txHash    String   // required — proof of on-chain deposit, never optional
+  loggedBy  String   // User.id of whoever logged it
+  date      DateTime @default(now())
+
+  @@map("deposits")
+  @@index([clientId])
+}
+
+model Withdrawal {
+  id           String            @id @default(cuid())
+  client       Client            @relation(fields: [clientId], references: [id])
+  clientId     String
+  amountUsd    Decimal           @db.Decimal(18, 2)
+  destination  String            // destination wallet address
+  status       WithdrawalStatus  @default(PENDING)
+  requestedAt  DateTime          @default(now())
+  requestedBy  String            // User.id who created the pending request
+  processedAt  DateTime?
+  processedBy  String?           // User.id who marked it processed — must be OWNER, enforced in route
+  txHash       String?           // required once status = PROCESSED, enforced in route
+
+  @@map("withdrawals")
+  @@index([clientId])
+}
+
+model Trade {
+  id        String      @id @default(cuid())
+  client    Client      @relation(fields: [clientId], references: [id])
+  clientId  String
+  asset     String      @default("BTC")
+  side      TradeSide
+  size      Decimal     @db.Decimal(18, 8)
+  entry     Decimal     @db.Decimal(18, 2)
+  exit      Decimal?    @db.Decimal(18, 2)
+  status    TradeStatus @default(OPEN)
+  loggedBy  String      // User.id of whoever logged it
+  date      DateTime    @default(now())
+  closedAt  DateTime?
+
+  @@map("trades")
+  @@index([clientId])
+}
+
+// Every sensitive action gets a row here — who did what, when. Never deleted.
+model AuditLog {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  action    String   // e.g. "withdrawal.processed", "client.created", "trade.logged"
+  targetId  String?  // id of the affected record, if any
+  detail    String?  // short human-readable context, no sensitive data
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+  @@index([userId])
+}
+
+// A record of each time someone checked the ledger's expected balance against
+// what the wallet actually holds. History matters here — a pattern of small,
+// growing discrepancies is a much bigger signal than any single check.
+model Reconciliation {
+  id          String   @id @default(cuid())
+  expectedUsd Decimal  @db.Decimal(18, 2)
+  actualUsd   Decimal  @db.Decimal(18, 2)
+  diffUsd     Decimal  @db.Decimal(18, 2)
+  note        String?
+  checkedBy   String   // User.id
+  createdAt   DateTime @default(now())
+
+  @@map("reconciliations")
+}
