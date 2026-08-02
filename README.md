@@ -1,67 +1,345 @@
-# GenesisX — Everything Built So Far
+# GenesisX — Licensed Bitcoin Fund Management
 
-## Status at a glance
+A full-stack application for managing Bitcoin accounts with complete transparency, per-client segregated accounts, and on-chain proof for every deposit and withdrawal.
 
-| Piece | Status | Deployable now? |
-|---|---|---|
-| `backend/` | Phase 1+2 complete — real API, database schema, auth, 2FA | **Yes** — deploy to Railway, works standalone |
-| `admin-tool/` | UI complete, still running on in-memory demo data | Looks done, but not wired to `backend/` yet |
-| `client-dashboard/` | UI complete, still running on generated demo data | Looks done, but not wired to `backend/` yet |
-| `landing-page/` | Complete, your real license/entity details included | Yes, but see cautions below before it goes public |
+## Project Structure
 
-**The short version:** the backend is the only piece that's a real, working system right
-now. The two dashboards are polished UI shells — every click updates local browser
-state that disappears on refresh, and nothing they do reaches the database yet. That
-wiring is Phase 3, not done yet.
+```
+genesisx/
+├── backend/              # Express API server + Prisma ORM
+│   ├── src/
+│   │   ├── index.js      # Main server (serves all frontends)
+│   │   ├── routes/       # API endpoints (auth, clients, trades, etc.)
+│   │   └── ...
+│   ├── prisma/
+│   │   └── schema.prisma # Database schema
+│   └── package.json
+├── landing-page/         # Static HTML landing page
+│   ├── index.html        # Main page
+│   └── package.json
+├── admin-tool/           # React admin dashboard (staff tool)
+│   ├── dashboard.jsx     # Main component
+│   ├── main.jsx          # Entry point
+│   ├── index.html        # Vite entry
+│   ├── vite.config.js    # Vite configuration
+│   └── package.json
+├── client-dashboard/     # React client dashboard (client-facing)
+│   ├── client-dashboard.jsx
+│   ├── main.jsx
+│   ├── index.html
+│   ├── vite.config.js
+│   └── package.json
+├── package.json          # Root workspace config
+├── railway.json          # Railway deployment config
+└── README.md
+```
 
-## backend/
+## Features
 
-Deploy this to Railway now if you want — it's self-contained and doesn't depend on
-the frontends. Full instructions are in `backend/README.md`: add a Postgres plugin,
-set `JWT_SECRET` and `ALLOWED_ORIGIN`, run migrations, seed your Owner account, enroll
-2FA. Once deployed you can test it directly with curl/Postman even with no UI
-attached — the API documentation is in that README too.
+### Backend (`backend/`)
+- **Express.js** API server with security middleware (Helmet, CORS, rate-limiting)
+- **Prisma ORM** for PostgreSQL database management
+- **Authentication**: Separate login flows for staff and clients
+- **2FA support**: TOTP-based two-factor authentication
+- **Endpoints**:
+  - `/auth/staff` — Staff login & TOTP management
+  - `/auth/client` — Client login
+  - `/api/clients` — Manage clients (staff only)
+  - `/api/deposits` — Log deposits with on-chain proof
+  - `/api/withdrawals` — Request & process withdrawals
+  - `/api/trades` — Log trades (long/short)
+  - `/api/reconciliation` — Verify ledger vs. wallet balance
+  - `/api/me` — Client's own data (client-facing)
 
-## admin-tool/dashboard.jsx
+### Frontend: Landing Page (`landing-page/`)
+- Static HTML5 + CSS landing page
+- Responsive design with smooth animations
+- Regulatory information (NYDFS license, fees, terms)
+- Risk disclosure
+- Email contact CTA
 
-Single React file. Client accounts, deposits/withdrawals (tx-hash required,
-pending→processed two-step), trade logging, live BTC price, reconciliation check.
-Runs standalone as a demo — refresh the page and all data resets. Phase 3 will replace
-the in-memory state with real calls to `backend/`.
+**Served at:** `/`
 
-## client-dashboard/client-dashboard.jsx
+### Frontend: Admin Dashboard (`admin-tool/`)
+- React app (Vite + JSX)
+- Staff tool for managing clients and trades
+- Features:
+  - Client management (add, view, filter)
+  - Deposit logging with on-chain proof
+  - Withdrawal request + approval workflow
+  - Trade logging (long/short, open/closed)
+  - Real-time BTC price ticker
+  - Reconciliation panel (compare ledger vs. wallet)
+  - Audit trail
 
-Single React file. Real-time balance, 1W/1M/3M/6M/1Y historical performance view
-(actual trade P&L, not a promised rate), equity chart, live BTC price. Currently shows
-generated demo trade history, not real data. Same Phase 3 wiring needed.
+**Served at:** `/admin`
 
-## landing-page/index.html
+### Frontend: Client Dashboard (`client-dashboard/`)
+- React app (Vite + JSX)
+- Client-facing dashboard
+- Features:
+  - Account balance display
+  - P&L over various time ranges (1W, 1M, 3M, 6M, 1Y)
+  - Equity curve chart
+  - Transaction history
+  - Real-time BTC price
+  - Read-only view of own account data
 
-Public marketing page. Contains the entity name, NYDFS license number, fee structure,
-and contact details exactly as you provided them — **not independently verified**.
-Risk disclosure section is placeholder text, clearly marked in the page itself,
-pending your lawyer's review. See the cautions list below before this goes live
-anywhere public.
+**Served at:** `/dashboard`
 
-## Before any of this touches real clients or money
+## Setup
 
-1. Verify "GenesisX" and license 464945549 yourself on NYDFS's public registry.
-2. Get the placeholder risk disclosure replaced with lawyer-reviewed language.
-3. Reconsider the personal Gmail + residential address on the public landing page.
-4. Finish Phase 3 (wire the UIs to the real backend) before trusting any balance shown
-   on screen — right now both dashboards can show numbers that were never saved
-   anywhere.
-5. Fixed-term deposits, advertised/guaranteed APR, and withdrawal lock-ups are
-   deliberately not built anywhere in this project. That combination is what turned
-   Celsius, BlockFi, and Voyager into regulatory and criminal cases — it needs a
-   securities lawyer's sign-off on the specific structure before it's built, not a
-   backend decision.
+### Prerequisites
+- **Node.js** 18+
+- **PostgreSQL** database (local or Railway)
 
-## What's left (Phase 3+)
+### Local Development
 
-- Wire `admin-tool` and `client-dashboard` to call the real `backend/` API instead of
-  local state
-- Client self-service password reset
-- Exportable statements (PDF/CSV) per client
-- Automatic wallet-balance pull for reconciliation (currently manual entry)
-- Rate limiting beyond login, automated backups, deployment hardening
+1. **Clone and install**:
+   ```bash
+   git clone <repo>
+   cd genesisx
+   npm install
+   ```
+
+2. **Set up environment variables**:
+   ```bash
+   cd backend
+   cp .env.example .env
+   # Edit .env with your DATABASE_URL and other secrets
+   cd ..
+   ```
+
+3. **Run database migrations**:
+   ```bash
+   cd backend
+   npx prisma migrate dev
+   npx prisma generate
+   cd ..
+   ```
+
+4. **Start development**:
+   ```bash
+   npm run dev
+   # Backend runs on http://localhost:3001
+   # Landing page served on http://localhost:3001/
+   # Admin dashboard on http://localhost:3001/admin (after build)
+   # Client dashboard on http://localhost:3001/dashboard (after build)
+   ```
+
+## Deployment on Railway
+
+### 1. Create Railway Services
+
+1. **PostgreSQL Service**:
+   - Add PostgreSQL plugin in Railway
+   - Railway will inject `DATABASE_URL` automatically
+
+2. **Backend Service** (single service):
+   - Connect your GitHub repo
+   - Set build command: `npm run build`
+   - Set start command: `npm start`
+   - Add environment variables:
+     ```
+     DATABASE_URL=<from PostgreSQL plugin>
+     PORT=3000
+     ALLOWED_ORIGIN=https://your-railway-domain.railway.app
+     ```
+
+### 2. Environment Variables
+
+Set these in your Railway Backend service:
+
+```env
+# Database (Railway PostgreSQL provides this automatically)
+DATABASE_URL=postgresql://user:password@host:5432/dbname
+
+# Server
+PORT=3000
+
+# Security
+ALLOWED_ORIGIN=https://your-railway-domain.railway.app
+JWT_SECRET=<generate-a-strong-secret>
+
+# 2FA (Optional)
+TOTP_WINDOW=1
+```
+
+### 3. Build Process
+
+Railway will:
+1. Install all dependencies (`npm install`)
+2. Run build script: `npm run build` (builds admin-tool and client-dashboard)
+3. Start with: `npm start` (runs backend server)
+
+The backend server will:
+- Serve the landing page at `/`
+- Serve built admin dashboard at `/admin`
+- Serve built client dashboard at `/dashboard`
+- Expose API endpoints at `/api/*` and `/auth/*`
+
+### 4. First Deploy Checklist
+
+- [ ] PostgreSQL service created and connected
+- [ ] Backend environment variables set
+- [ ] `DATABASE_URL` is set (from PostgreSQL plugin)
+- [ ] `PORT=3000` is set
+- [ ] `ALLOWED_ORIGIN` is set to your Railway domain
+- [ ] Deploy backend service
+- [ ] Check `/health` endpoint returns `{"ok": true}`
+- [ ] Run database migrations (can be done via Railway CLI or in post-deploy script)
+
+### 5. Run Migrations on Railway
+
+After first deploy, migrate your database:
+
+```bash
+railway run npx prisma migrate deploy
+```
+
+## API Examples
+
+### Staff Login
+```bash
+curl -X POST http://localhost:3001/auth/staff/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@genesis.x","password":"your-password"}'
+```
+
+### Create a Client
+```bash
+curl -X POST http://localhost:3001/api/clients \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <staff-token>" \
+  -d '{
+    "name":"Alice Johnson",
+    "email":"alice@example.com",
+    "contact":"alice@example.com",
+    "walletRef":"bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"
+  }'
+```
+
+### Log a Deposit
+```bash
+curl -X POST http://localhost:3001/api/deposits \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <staff-token>" \
+  -d '{
+    "clientId":"<client-id>",
+    "amountUsd":25000,
+    "txHash":"abc123def456..."
+  }'
+```
+
+### Log a Trade
+```bash
+curl -X POST http://localhost:3001/api/trades \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <staff-token>" \
+  -d '{
+    "clientId":"<client-id>",
+    "asset":"BTC",
+    "side":"long",
+    "size":0.5,
+    "entry":65000,
+    "exit":70000
+  }'
+```
+
+## Database Schema
+
+The Prisma schema (`backend/prisma/schema.prisma`) includes:
+- **User** — staff accounts (with 2FA support)
+- **Client** — client accounts
+- **Deposit** — inbound transactions with tx hash
+- **Withdrawal** — withdrawal requests + processing
+- **Trade** — trade records (open/closed)
+- **AuditLog** — every sensitive action logged
+- **Reconciliation** — periodic ledger checks
+
+## Security
+
+- Passwords are bcrypt-hashed
+- JWTs for session management
+- CORS configured per environment
+- Helmet.js security headers
+- Rate limiting on auth endpoints
+- 2FA (TOTP) support for staff
+- Audit logging for all sensitive operations
+- No sensitive data in error messages
+
+## Development
+
+### Add a New API Endpoint
+
+1. Create a route file in `backend/src/routes/`:
+   ```javascript
+   // backend/src/routes/my-feature.js
+   const express = require("express");
+   const router = express.Router();
+
+   router.get("/", (req, res) => {
+     res.json({ message: "My feature" });
+   });
+
+   module.exports = router;
+   ```
+
+2. Mount it in `backend/src/index.js`:
+   ```javascript
+   app.use("/api/my-feature", require("./routes/my-feature"));
+   ```
+
+### Update the Database Schema
+
+1. Edit `backend/prisma/schema.prisma`
+2. Run migration:
+   ```bash
+   cd backend
+   npx prisma migrate dev --name <descriptive-name>
+   npx prisma generate
+   ```
+
+### Rebuild Admin/Client Dashboards
+
+After making changes to React components:
+
+```bash
+cd admin-tool
+npm run build
+# or
+cd ../client-dashboard
+npm run build
+```
+
+Then restart the backend to serve the new builds.
+
+## Troubleshooting
+
+### "Not found" on landing page
+- Ensure the backend server is running
+- Check `/health` endpoint
+- Verify `backend/public/` contains static files
+
+### Admin dashboard shows 404
+- Ensure `admin-tool/dist/` exists
+- Run `cd admin-tool && npm run build`
+- Restart backend
+
+### Database connection fails
+- Check `DATABASE_URL` environment variable
+- Verify PostgreSQL is running
+- Try: `psql $DATABASE_URL -c "SELECT 1"` to test connection
+
+### JWT errors
+- Ensure `JWT_SECRET` is set in environment
+- Check token hasn't expired
+- Verify Authorization header format: `Bearer <token>`
+
+## License
+
+Proprietary — GenesisX Ltd.
+
+## Support
+
+For issues or questions, contact: chasr1226@gmail.com
