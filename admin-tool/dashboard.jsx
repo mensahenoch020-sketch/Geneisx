@@ -1,5 +1,24 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight, X, ChevronRight, Activity, Clock, Check, ArrowDown, ArrowUp, Scale, AlertTriangle, ShieldCheck } from "lucide-react";
+import { Plus, TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight, X, ChevronRight, Activity, Clock, Check, ArrowDown, ArrowUp, Scale, AlertTriangle, ShieldCheck, Download, LogOut } from "lucide-react";
+import StaffLoginScreen from "./StaffLoginScreen.jsx";
+import {
+  getToken,
+  clearToken,
+  listClients,
+  getClient,
+  createClient,
+  createDeposit,
+  createWithdrawal,
+  processWithdrawal,
+  createTrade,
+  closeTrade,
+  getExpectedHoldings,
+  getRevenue,
+  runReconciliationCheck,
+  getReconciliationHistory,
+  downloadClientStatement,
+  ApiError,
+} from "./api.js";
 
 // ---------- Design tokens ----------
 // Palette: ledger-inspired. Deep ink background, bone paper cards, single signal color (amber for gains, not the default green — feels like a trading tape, not a generic finance app).
@@ -57,14 +76,85 @@ const fmtUSD = (n, opts = {}) =>
 
 const fmtBTC = (n) => (n == null ? "—" : `${n.toFixed(6)} BTC`);
 
-const uid = () => Math.random().toString(36).slice(2, 10);
+// Normalizes API shapes (Decimal-as-string amounts, UPPERCASE enums) into the
+// lowercase/number shape this component's existing UI code already expects,
+// so the JSX below didn't need to be rewritten from scratch.
+function normalizeClientSummary(c) {
+  return {
+    id: c.id,
+    name: c.name,
+    email: c.email,
+    contact: c.contact,
+    walletRef: c.walletRef,
+    depositReference: c.depositReference,
+    createdAt: c.createdAt,
+    activeSubscription: c.activeSubscription || null,
+    // full detail (deposits/withdrawals/trades) is loaded lazily per-client via getClient()
+    deposits: [],
+    withdrawals: [],
+    trades: [],
+    _balance: c.balance,
+    _pnl: c.pnl,
+  };
+}
 
-// ---------- Seed data (empty — this is a real admin tool, not a demo with fake clients) ----------
-const initialClients = [];
+function normalizeClientDetail(c) {
+  return {
+    id: c.id,
+    name: c.name,
+    email: c.email,
+    contact: c.contact,
+    walletRef: c.walletRef,
+    depositReference: c.depositReference,
+    createdAt: c.createdAt,
+    activeSubscription: c.activeSubscription || null,
+    deposits: c.deposits.map((d) => ({ id: d.id, amount: Number(d.amountUsd), txHash: d.txHash, date: d.date })),
+    withdrawals: c.withdrawals.map((w) => ({
+      id: w.id,
+      amount: Number(w.amountUsd),
+      destination: w.destination,
+      status: w.status.toLowerCase(),
+      requestedAt: w.requestedAt,
+      processedAt: w.processedAt,
+      txHash: w.txHash,
+    })),
+    trades: c.trades.map((t) => ({
+      id: t.id,
+      asset: t.asset,
+      side: t.side.toLowerCase(),
+      size: Number(t.size),
+      entry: Number(t.entry),
+      exit: t.exit != null ? Number(t.exit) : null,
+      date: t.date,
+      status: t.status.toLowerCase(),
+    })),
+  };
+}
+
+function normalizeReconciliationRecord(r) {
+  return {
+    id: r.id,
+    date: r.createdAt,
+    expected: Number(r.expectedUsd),
+    actual: Number(r.actualUsd),
+    diff: Number(r.diffUsd),
+    note: r.note || "",
+  };
+}
 
 export default function AdminDashboard() {
+  const [authed, setAuthed] = useState(() => !!getToken());
+
+  if (!authed) {
+    return <StaffLoginScreen onAuthenticated={() => setAuthed(true)} />;
+  }
+
+  return <AdminDashboardAuthed onLoggedOut={() => setAuthed(false)} />;
+}
+
+function AdminDashboardAuthed({ onLoggedOut }) {
   const { price: btcPrice, change: btcChange, status: priceStatus } = useLivePrice("bitcoin");
-  const [clients, setClients] = useState(initialClients);
+  const [clients, setClients] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [view, setView] = useState("clients"); // "clients" | "reconciliation"
   const [showAddClient, setShowAddClient] = useState(false);
@@ -72,127 +162,234 @@ export default function AdminDashboard() {
   const [showAddDeposit, setShowAddDeposit] = useState(false);
   const [showAddWithdrawal, setShowAddWithdrawal] = useState(false);
   const [reconciliations, setReconciliations] = useState([]);
+  const [expectedHoldings, setExpectedHoldings] = useState(0);
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [loadingClients, setLoadingClients] = useState(true);
+  const [newlyCreatedClient, setNewlyCreatedClient] = useState(null); // shows the one-time temp password
+  const [clientFilter, setClientFilter] = useState("");
+  const [revenue, setRevenue] = useState(null);
 
   const selected = clients.find((c) => c.id === selectedId) || null;
 
+  function handleAuthError(err) {
+    if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+      onLoggedOut();
+      return true;
+    }
+    return false;
+  }
+
+  async function reloadClientList() {
+    try {
+      const data = await listClients();
+      setClients((prev) => {
+        // Preserve any already-loaded detail (deposits/withdrawals/trades) for
+        // the currently selected client rather than wiping it back to empty.
+        const byId = Object.fromEntries(prev.map((c) => [c.id, c]));
+        return data.map((c) => {
+          const existing = byId[c.id];
+          const summary = normalizeClientSummary(c);
+          return existing && existing.deposits.length + existing.withdrawals.length + existing.trades.length > 0
+            ? { ...summary, deposits: existing.deposits, withdrawals: existing.withdrawals, trades: existing.trades }
+            : summary;
+        });
+      });
+    } catch (err) {
+      if (!handleAuthError(err)) setLoadError(err.message || "Could not load clients");
+    }
+  }
+
+  async function reloadReconciliation() {
+    try {
+      const [expected, history] = await Promise.all([getExpectedHoldings(), getReconciliationHistory()]);
+      setExpectedHoldings(expected.expectedHoldingsUsd);
+      setReconciliations(history.map(normalizeReconciliationRecord));
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not load reconciliation data");
+    }
+  }
+
+  async function reloadRevenue() {
+    try {
+      const data = await getRevenue();
+      setRevenue(data);
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not load revenue summary");
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+    async function init() {
+      setLoadingClients(true);
+      await reloadClientList();
+      await reloadRevenue();
+      if (mounted) setLoadingClients(false);
+    }
+    init();
+    return () => {
+      mounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (view === "reconciliation") reloadReconciliation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+
+  async function selectClient(id) {
+    setSelectedId(id);
+    setActionError("");
+    try {
+      const detail = await getClient(id);
+      const normalized = normalizeClientDetail(detail);
+      setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...normalized } : c)));
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not load client detail");
+    }
+  }
+
   const totals = useMemo(() => {
-    const deposited = clients.reduce((s, c) => s + totalDeposited(c), 0);
-    const withdrawn = clients.reduce((s, c) => s + totalProcessedWithdrawn(c), 0);
-    const pnl = clients.reduce((s, c) => s + clientPnL(c), 0);
-    const expectedHoldings = clients.reduce((s, c) => s + clientBalance(c), 0);
-    return { deposited, withdrawn, pnl, clientCount: clients.length, expectedHoldings };
+    const deposited = clients.reduce((s, c) => s + (c.deposits.length ? totalDeposited(c) : 0), 0);
+    const withdrawn = clients.reduce((s, c) => s + (c.withdrawals.length ? totalProcessedWithdrawn(c) : 0), 0);
+    const pnl = clients.reduce((s, c) => s + (c._pnl ?? clientPnL(c)), 0);
+    const summedBalance = clients.reduce((s, c) => s + (c._balance ?? clientBalance(c)), 0);
+    return { deposited, withdrawn, pnl, clientCount: clients.length, expectedHoldings: summedBalance };
   }, [clients]);
 
-  function addReconciliation(actualHoldingsUSD, note) {
-    const record = {
-      id: uid(),
-      date: new Date().toISOString(),
-      expected: totals.expectedHoldings,
-      actual: parseFloat(actualHoldingsUSD),
-      diff: parseFloat(actualHoldingsUSD) - totals.expectedHoldings,
-      note: note || "",
-    };
-    setReconciliations((prev) => [record, ...prev]);
+  const filteredClients = useMemo(() => {
+    const q = clientFilter.trim().toLowerCase();
+    if (!q) return clients;
+    return clients.filter((c) => {
+      return (
+        c.name?.toLowerCase().includes(q) ||
+        c.email?.toLowerCase().includes(q) ||
+        c.depositReference?.toLowerCase().includes(q)
+      );
+    });
+  }, [clients, clientFilter]);
+
+  async function addReconciliation(actualHoldingsUSD, note) {
+    setActionError("");
+    try {
+      await runReconciliationCheck(parseFloat(actualHoldingsUSD), note || undefined);
+      await reloadReconciliation();
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not run reconciliation check");
+    }
   }
 
-  function addClient(data) {
-    const client = {
-      id: uid(),
-      name: data.name,
-      contact: data.contact,
-      walletRef: data.walletRef,
-      createdAt: new Date().toISOString(),
-      deposits: data.initialDeposit ? [{ id: uid(), amount: parseFloat(data.initialDeposit), date: new Date().toISOString() }] : [],
-      withdrawals: [],
-      trades: [],
-    };
-    setClients((prev) => [...prev, client]);
-    setSelectedId(client.id);
-    setView("clients");
-    setShowAddClient(false);
+  async function addClient(data) {
+    setActionError("");
+    try {
+      const created = await createClient({
+        name: data.name,
+        email: data.email,
+        contact: data.contact || undefined,
+        walletRef: data.walletRef || undefined,
+      });
+      if (data.initialDeposit && parseFloat(data.initialDeposit) > 0) {
+        setActionError(
+          "Client created. Note: log the initial deposit separately with its on-chain transaction hash — deposits require proof and can't be created without one."
+        );
+      }
+      setNewlyCreatedClient(created); // { id, name, email, tempPassword } — shown once
+      await reloadClientList();
+      setSelectedId(created.id);
+      await selectClient(created.id);
+      setView("clients");
+      setShowAddClient(false);
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not create client");
+    }
   }
 
-  function addDeposit(clientId, data) {
-    setClients((prev) =>
-      prev.map((c) =>
-        c.id === clientId
-          ? {
-              ...c,
-              deposits: [
-                ...c.deposits,
-                { id: uid(), amount: parseFloat(data.amount), txHash: data.txHash, date: new Date().toISOString() },
-              ],
-            }
-          : c
-      )
-    );
-    setShowAddDeposit(false);
+  async function addDeposit(clientId, data) {
+    setActionError("");
+    try {
+      await createDeposit({ clientId, amountUsd: parseFloat(data.amount), txHash: data.txHash });
+      await selectClient(clientId);
+      await reloadClientList();
+      setShowAddDeposit(false);
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not log deposit");
+    }
   }
 
-  function addWithdrawal(clientId, data) {
-    setClients((prev) =>
-      prev.map((c) =>
-        c.id === clientId
-          ? {
-              ...c,
-              withdrawals: [
-                ...c.withdrawals,
-                {
-                  id: uid(),
-                  amount: parseFloat(data.amount),
-                  destination: data.destination,
-                  requestedAt: new Date().toISOString(),
-                  status: "pending",
-                  processedAt: null,
-                  txHash: null,
-                },
-              ],
-            }
-          : c
-      )
-    );
-    setShowAddWithdrawal(false);
+  async function addWithdrawal(clientId, data) {
+    setActionError("");
+    try {
+      await createWithdrawal({ clientId, amountUsd: parseFloat(data.amount), destination: data.destination });
+      await selectClient(clientId);
+      await reloadClientList();
+      setShowAddWithdrawal(false);
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not create withdrawal request");
+    }
   }
 
-  function markWithdrawalProcessed(clientId, withdrawalId, txHash) {
-    setClients((prev) =>
-      prev.map((c) =>
-        c.id === clientId
-          ? {
-              ...c,
-              withdrawals: c.withdrawals.map((w) =>
-                w.id === withdrawalId ? { ...w, status: "processed", processedAt: new Date().toISOString(), txHash } : w
-              ),
-            }
-          : c
-      )
-    );
+  async function markWithdrawalProcessed(clientId, withdrawalId, txHash) {
+    setActionError("");
+    try {
+      await processWithdrawal(withdrawalId, txHash);
+      await selectClient(clientId);
+      await reloadClientList();
+    } catch (err) {
+      if (!handleAuthError(err)) {
+        setActionError(
+          err.message ||
+            "Could not mark withdrawal processed — this action requires the Owner role and 2FA on login."
+        );
+      }
+    }
   }
 
-  function addTrade(clientId, trade) {
-    setClients((prev) =>
-      prev.map((c) =>
-        c.id === clientId
-          ? {
-              ...c,
-              trades: [
-                ...c.trades,
-                {
-                  id: uid(),
-                  asset: trade.asset,
-                  side: trade.side,
-                  entry: parseFloat(trade.entry),
-                  exit: trade.exit ? parseFloat(trade.exit) : null,
-                  size: parseFloat(trade.size),
-                  date: trade.date || new Date().toISOString(),
-                  status: trade.exit ? "closed" : "open",
-                },
-              ],
-            }
-          : c
-      )
-    );
-    setShowAddTrade(false);
+  async function addTrade(clientId, trade) {
+    setActionError("");
+    try {
+      await createTrade({
+        clientId,
+        asset: trade.asset,
+        side: trade.side,
+        size: parseFloat(trade.size),
+        entry: parseFloat(trade.entry),
+        exit: trade.exit ? parseFloat(trade.exit) : undefined,
+      });
+      await selectClient(clientId);
+      await reloadClientList();
+      await reloadRevenue();
+      setShowAddTrade(false);
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not log trade");
+    }
+  }
+
+  async function closeExistingTrade(clientId, tradeId, exit) {
+    setActionError("");
+    try {
+      await closeTrade(tradeId, parseFloat(exit));
+      await selectClient(clientId);
+      await reloadClientList();
+      await reloadRevenue(); // closing in profit may have just created a performance fee
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not close trade");
+    }
+  }
+
+  async function handleDownloadStatement(clientId, format) {
+    setActionError("");
+    try {
+      await downloadClientStatement(clientId, format);
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not download statement");
+    }
+  }
+
+  function handleLogout() {
+    clearToken();
+    onLoggedOut();
   }
 
   return (
@@ -282,10 +479,53 @@ export default function AdminDashboard() {
           </button>
         </nav>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <PriceTicker price={btcPrice} change={btcChange} status={priceStatus} />
+          <button
+            onClick={handleLogout}
+            aria-label="Log out"
+            style={{
+              background: "transparent",
+              border: `1px solid ${COLORS.panelBorder}`,
+              borderRadius: 6,
+              color: COLORS.boneDim,
+              width: 30,
+              height: 30,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <LogOut size={13} />
+          </button>
         </div>
       </header>
+
+      {actionError && (
+        <div
+          style={{
+            background: "rgba(232,96,76,0.08)",
+            borderBottom: `1px solid rgba(232,96,76,0.3)`,
+            color: COLORS.loss,
+            fontSize: 12.5,
+            padding: "10px 28px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span>{actionError}</span>
+          <button onClick={() => setActionError("")} style={{ background: "transparent", border: "none", color: COLORS.loss, padding: 4 }}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {loadError && (
+        <div style={{ background: "rgba(232,96,76,0.08)", color: COLORS.loss, fontSize: 12.5, padding: "10px 28px" }}>
+          {loadError}
+        </div>
+      )}
 
       <div style={{ display: "flex", minHeight: "calc(100vh - 68px)" }}>
         {/* Client list */}
@@ -322,19 +562,43 @@ export default function AdminDashboard() {
             </button>
           </div>
 
+          <input
+            value={clientFilter}
+            onChange={(e) => setClientFilter(e.target.value)}
+            placeholder="Search name, email, or ref code…"
+            style={{
+              background: COLORS.ink,
+              border: `1px solid ${COLORS.panelBorder}`,
+              borderRadius: 7,
+              padding: "7px 10px",
+              color: COLORS.bone,
+              fontSize: 12.5,
+              outline: "none",
+            }}
+          />
+
           <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }} className="scrollbar-thin">
-            {clients.length === 0 && (
+            {loadingClients && (
+              <div style={{ padding: "24px 12px", textAlign: "center", color: COLORS.boneDim, fontSize: 13 }}>Loading clients…</div>
+            )}
+            {!loadingClients && clients.length === 0 && (
               <div style={{ padding: "24px 12px", textAlign: "center", color: COLORS.boneDim, fontSize: 13, lineHeight: 1.6 }}>
                 No clients yet. Add your first client to start tracking their account.
               </div>
             )}
-            {clients.map((c) => {
-              const pnl = clientPnL(c);
+            {!loadingClients && clients.length > 0 && filteredClients.length === 0 && (
+              <div style={{ padding: "24px 12px", textAlign: "center", color: COLORS.boneDim, fontSize: 13, lineHeight: 1.6 }}>
+                No clients match "{clientFilter}".
+              </div>
+            )}
+            {filteredClients.map((c) => {
+              const pnl = c._pnl ?? clientPnL(c);
+              const bal = c._balance ?? clientBalance(c);
               const isSelected = c.id === selectedId;
               return (
                 <button
                   key={c.id}
-                  onClick={() => setSelectedId(c.id)}
+                  onClick={() => selectClient(c.id)}
                   style={{
                     background: isSelected ? COLORS.panel : "transparent",
                     border: `1px solid ${isSelected ? COLORS.panelBorder : "transparent"}`,
@@ -353,7 +617,7 @@ export default function AdminDashboard() {
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span className="mono" style={{ fontSize: 11.5, color: COLORS.boneDim }}>
-                      {fmtUSD(clientBalance(c))}
+                      {fmtUSD(bal)}
                     </span>
                     <span className="mono" style={{ fontSize: 11.5, color: pnl >= 0 ? COLORS.gain : COLORS.loss }}>
                       {pnl >= 0 ? "+" : ""}
@@ -366,12 +630,13 @@ export default function AdminDashboard() {
           </div>
         </aside>
 
+
         {/* Main panel */}
         <main style={{ flex: 1, padding: "24px 32px" }}>
           {view === "reconciliation" ? (
             <ReconciliationPanel totals={totals} records={reconciliations} onSubmit={addReconciliation} btcPrice={btcPrice} />
           ) : !selected ? (
-            <OverviewPanel clients={clients} totals={totals} onAddClient={() => setShowAddClient(true)} />
+            <OverviewPanel clients={clients} totals={totals} revenue={revenue} onAddClient={() => setShowAddClient(true)} />
           ) : (
             <ClientPanel
               client={selected}
@@ -379,6 +644,8 @@ export default function AdminDashboard() {
               onAddDeposit={() => setShowAddDeposit(true)}
               onAddWithdrawal={() => setShowAddWithdrawal(true)}
               onMarkProcessed={(withdrawalId, txHash) => markWithdrawalProcessed(selected.id, withdrawalId, txHash)}
+              onDownloadStatement={(format) => handleDownloadStatement(selected.id, format)}
+              onCloseTrade={(tradeId, exit) => closeExistingTrade(selected.id, tradeId, exit)}
               btcPrice={btcPrice}
             />
           )}
@@ -394,6 +661,9 @@ export default function AdminDashboard() {
       )}
       {showAddWithdrawal && selected && (
         <AddWithdrawalModal onClose={() => setShowAddWithdrawal(false)} onSubmit={(w) => addWithdrawal(selected.id, w)} />
+      )}
+      {newlyCreatedClient && (
+        <TempPasswordModal client={newlyCreatedClient} onClose={() => setNewlyCreatedClient(null)} />
       )}
     </div>
   );
@@ -426,7 +696,7 @@ function PriceTicker({ price, change, status }) {
   );
 }
 
-function OverviewPanel({ clients, totals, onAddClient }) {
+function OverviewPanel({ clients, totals, revenue, onAddClient }) {
   return (
     <div>
       <div style={{ marginBottom: 28 }}>
@@ -434,7 +704,7 @@ function OverviewPanel({ clients, totals, onAddClient }) {
         <p style={{ color: COLORS.boneDim, fontSize: 13.5, marginTop: 4 }}>Across all client accounts</p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 32 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 20 }}>
         <StatCard label="Total deposited" value={fmtUSD(totals.deposited)} />
         <StatCard
           label="Total P&L"
@@ -443,6 +713,14 @@ function OverviewPanel({ clients, totals, onAddClient }) {
         />
         <StatCard label="Active clients" value={totals.clientCount} />
       </div>
+
+      {revenue && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 32 }}>
+          <StatCard label="Subscription revenue" value={fmtUSD(revenue.subscriptionRevenue)} color={COLORS.signal} />
+          <StatCard label="Performance fee revenue" value={fmtUSD(revenue.performanceFeeRevenue)} color={COLORS.signal} />
+          <StatCard label="Total revenue" value={fmtUSD(revenue.totalRevenue)} color={COLORS.signal} />
+        </div>
+      )}
 
       {clients.length === 0 ? (
         <EmptyState onAddClient={onAddClient} />
@@ -636,39 +914,6 @@ function ReconciliationResult({ record }) {
   );
 }
 
-
-  return (
-    <div
-      style={{
-        border: `1px dashed ${COLORS.panelBorder}`,
-        borderRadius: 12,
-        padding: "48px 24px",
-        textAlign: "center",
-      }}
-    >
-      <Wallet size={22} color={COLORS.boneDim} style={{ marginBottom: 12 }} />
-      <div style={{ fontSize: 14.5, fontWeight: 500, marginBottom: 4 }}>No client accounts yet</div>
-      <div style={{ fontSize: 13, color: COLORS.boneDim, marginBottom: 18, maxWidth: 360, marginInline: "auto", lineHeight: 1.6 }}>
-        Add a client to start tracking their deposits and trades. Each client's account is fully separate — their balance and P&L are theirs alone.
-      </div>
-      <button
-        onClick={onAddClient}
-        style={{
-          background: COLORS.signal,
-          color: COLORS.ink,
-          border: "none",
-          borderRadius: 8,
-          padding: "9px 18px",
-          fontSize: 13.5,
-          fontWeight: 600,
-        }}
-      >
-        Add first client
-      </button>
-    </div>
-  );
-}
-
 function StatCard({ label, value, color }) {
   return (
     <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, borderRadius: 10, padding: "16px 18px" }}>
@@ -682,12 +927,24 @@ function StatCard({ label, value, color }) {
   );
 }
 
-function ClientPanel({ client, onAddTrade, onAddDeposit, onAddWithdrawal, onMarkProcessed, btcPrice }) {
+function ClientPanel({ client, onAddTrade, onAddDeposit, onAddWithdrawal, onMarkProcessed, onDownloadStatement, onCloseTrade, btcPrice }) {
   const deposited = totalDeposited(client);
   const pnl = clientPnL(client);
   const withdrawn = totalProcessedWithdrawn(client);
   const pending = totalPendingWithdrawal(client);
   const balance = clientBalance(client);
+  const [downloading, setDownloading] = useState(false);
+
+  const openTrades = useMemo(() => client.trades.filter((t) => t.status === "open"), [client]);
+
+  async function handleDownload(format) {
+    setDownloading(true);
+    try {
+      await onDownloadStatement(format);
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   // Combined, time-sorted history of deposits, withdrawals, and closed trades
   const history = useMemo(() => {
@@ -709,8 +966,47 @@ function ClientPanel({ client, onAddTrade, onAddDeposit, onAddWithdrawal, onMark
           <p style={{ color: COLORS.boneDim, fontSize: 13, marginTop: 4 }}>
             {client.contact} {client.walletRef ? `· ${client.walletRef}` : ""}
           </p>
+          <p style={{ color: COLORS.boneDim, fontSize: 12, marginTop: 2 }} className="mono">
+            Ref: {client.depositReference || "—"}
+          </p>
+          <div style={{ marginTop: 6 }}>
+            {client.activeSubscription ? (
+              <span
+                style={{
+                  fontSize: 11,
+                  color: COLORS.gain,
+                  background: "rgba(61,220,151,0.1)",
+                  border: `1px solid rgba(61,220,151,0.3)`,
+                  borderRadius: 5,
+                  padding: "3px 8px",
+                }}
+              >
+                Subscribed · {client.activeSubscription.tierMonths}mo · ends{" "}
+                {new Date(client.activeSubscription.endDate).toLocaleDateString()}
+              </span>
+            ) : (
+              <span
+                style={{
+                  fontSize: 11,
+                  color: COLORS.boneDim,
+                  background: "rgba(255,255,255,0.03)",
+                  border: `1px solid ${COLORS.panelBorder}`,
+                  borderRadius: 5,
+                  padding: "3px 8px",
+                }}
+              >
+                No active subscription
+              </span>
+            )}
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => handleDownload("pdf")} disabled={downloading} style={{ ...secondaryBtnStyle, opacity: downloading ? 0.6 : 1 }}>
+            <Download size={14} /> PDF
+          </button>
+          <button onClick={() => handleDownload("csv")} disabled={downloading} style={{ ...secondaryBtnStyle, opacity: downloading ? 0.6 : 1 }}>
+            <Download size={14} /> CSV
+          </button>
           <button onClick={onAddDeposit} style={secondaryBtnStyle}>
             <ArrowDown size={14} /> Deposit
           </button>
@@ -767,6 +1063,19 @@ function ClientPanel({ client, onAddTrade, onAddDeposit, onAddWithdrawal, onMark
         </div>
       )}
 
+      {openTrades.length > 0 && (
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 10 }}>
+            Open positions
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {openTrades.map((t) => (
+              <OpenTradeRow key={t.id} trade={t} onClose={(exit) => onCloseTrade(t.id, exit)} />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 10 }}>
         Transaction history
       </div>
@@ -816,13 +1125,16 @@ function HistoryRow({ item }) {
     );
   }
   if (item.type === "withdrawal") {
+    const isSubscriptionFee = item.destination === "SUBSCRIPTION_FEE";
     return (
       <tr style={{ borderBottom: `1px solid ${COLORS.panelBorder}` }}>
         <td style={cellStyle}>
-          <TypeBadge label="Withdrawal" color={COLORS.loss} />
+          <TypeBadge label={isSubscriptionFee ? "Subscription" : "Withdrawal"} color={COLORS.loss} />
         </td>
         <td style={{ ...cellStyle, color: COLORS.boneDim }}>
-          {item.status === "processed" ? "Sent" : "Pending"} {item.destination ? `→ ${truncateHash(item.destination)}` : ""}
+          {isSubscriptionFee
+            ? "Trading subscription renewal"
+            : `${item.status === "processed" ? "Sent" : "Pending"} ${item.destination ? `→ ${truncateHash(item.destination)}` : ""}`}
         </td>
         <td style={{ ...cellStyle, color: COLORS.loss }} className="mono">
           −{fmtUSD(item.amount)}
@@ -920,6 +1232,74 @@ function PendingWithdrawalRow({ withdrawal, onMarkProcessed }) {
             disabled={!txHash.trim()}
           >
             Confirm
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OpenTradeRow({ trade, onClose }) {
+  const [exit, setExit] = useState("");
+  const [showInput, setShowInput] = useState(false);
+  const [closing, setClosing] = useState(false);
+
+  async function handleClose() {
+    if (!exit.trim() || isNaN(parseFloat(exit))) return;
+    setClosing(true);
+    try {
+      await onClose(exit.trim());
+    } finally {
+      setClosing(false);
+      setShowInput(false);
+      setExit("");
+    }
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        background: COLORS.panel,
+        border: `1px solid ${COLORS.panelBorder}`,
+        borderRadius: 8,
+        padding: "10px 14px",
+        gap: 12,
+        flexWrap: "wrap",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 220 }}>
+        <Activity size={14} color={COLORS.signal} />
+        <div>
+          <div className="mono" style={{ fontSize: 13.5, fontWeight: 500 }}>
+            {trade.side.toUpperCase()} {trade.size} {trade.asset} @ {trade.entry}
+          </div>
+          <div style={{ fontSize: 11.5, color: COLORS.boneDim }}>
+            Opened {new Date(trade.date).toLocaleDateString()} · still open
+          </div>
+        </div>
+      </div>
+
+      {!showInput ? (
+        <button onClick={() => setShowInput(true)} style={{ ...secondaryBtnStyle, padding: "6px 12px" }}>
+          Close position
+        </button>
+      ) : (
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <input
+            placeholder="Exit price"
+            value={exit}
+            onChange={(e) => setExit(e.target.value)}
+            style={{ ...inputStyle, width: 120, marginBottom: 0, padding: "6px 10px", fontSize: 12.5 }}
+          />
+          <button
+            onClick={handleClose}
+            style={{ ...primaryBtnStyle, padding: "7px 12px", opacity: closing ? 0.6 : 1 }}
+            disabled={closing || !exit.trim()}
+          >
+            {closing ? "Closing…" : "Confirm"}
           </button>
         </div>
       )}
@@ -1057,34 +1437,85 @@ const inputStyle = {
 
 const labelStyle = { fontSize: 12, color: COLORS.boneDim, marginBottom: 6, display: "block" };
 
+function TempPasswordModal({ client, onClose }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(client.tempPassword);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard unavailable — user can still select and copy manually
+    }
+  }
+  return (
+    <ModalShell title="Client account created" onClose={onClose}>
+      <div style={{ fontSize: 13, color: COLORS.boneDim, marginBottom: 14, lineHeight: 1.6 }}>
+        Relay this temporary password to <strong style={{ color: COLORS.bone }}>{client.name}</strong> ({client.email}) through
+        a secure channel — not plaintext email or SMS. It's shown only once and won't be retrievable after you close this.
+        They'll be required to set their own password on first login.
+      </div>
+      <div
+        style={{
+          background: COLORS.ink,
+          border: `1px solid ${COLORS.panelBorder}`,
+          borderRadius: 8,
+          padding: "12px 14px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 14,
+        }}
+      >
+        <span className="mono" style={{ fontSize: 15, letterSpacing: 0.5 }}>
+          {client.tempPassword}
+        </span>
+        <button onClick={copy} style={{ ...secondaryBtnStyle, padding: "6px 10px", fontSize: 12 }}>
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <button onClick={onClose} style={{ ...primaryBtnStyle, width: "100%", justifyContent: "center" }}>
+        Done
+      </button>
+    </ModalShell>
+  );
+}
+
 function AddClientModal({ onClose, onSubmit }) {
-  const [form, setForm] = useState({ name: "", contact: "", walletRef: "", initialDeposit: "" });
+  const [form, setForm] = useState({ name: "", email: "", contact: "", walletRef: "" });
+  const valid = form.name.trim() && form.email.trim();
   return (
     <ModalShell title="Add client" onClose={onClose}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (!form.name.trim()) return;
+          if (!valid) return;
           onSubmit(form);
         }}
       >
         <label style={labelStyle}>Full name</label>
         <input style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
 
-        <label style={labelStyle}>Contact (email or phone)</label>
+        <label style={labelStyle}>Email (used for client login)</label>
+        <input
+          style={inputStyle}
+          type="email"
+          value={form.email}
+          onChange={(e) => setForm({ ...form, email: e.target.value })}
+          placeholder="client@example.com"
+          required
+        />
+
+        <label style={labelStyle}>Contact (phone, alternate email, etc — optional)</label>
         <input style={inputStyle} value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} />
 
         <label style={labelStyle}>Wallet / account reference</label>
         <input style={inputStyle} value={form.walletRef} onChange={(e) => setForm({ ...form, walletRef: e.target.value })} />
 
-        <label style={labelStyle}>Initial deposit (USD)</label>
-        <input
-          style={inputStyle}
-          type="number"
-          step="0.01"
-          value={form.initialDeposit}
-          onChange={(e) => setForm({ ...form, initialDeposit: e.target.value })}
-        />
+        <div style={{ fontSize: 11.5, color: COLORS.boneDim, marginTop: -8, marginBottom: 14, lineHeight: 1.6 }}>
+          A temporary password will be generated for this client — you'll see it once after creation to relay
+          securely. Log any initial deposit separately afterward, with its on-chain transaction hash as proof.
+        </div>
 
         <button
           type="submit"
@@ -1099,6 +1530,7 @@ function AddClientModal({ onClose, onSubmit }) {
             fontWeight: 600,
             marginTop: 4,
           }}
+          disabled={!valid}
         >
           Add client
         </button>
