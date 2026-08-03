@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "dev": "concurrently \"cd backend && npm run dev\" \"cd landing-page && npm run dev\"",
-    "build": "npm run build --workspaces",
+    "build": "bash scripts/build.sh",
     "start": "cd backend && npm start"
   },
   "devDependencies": {

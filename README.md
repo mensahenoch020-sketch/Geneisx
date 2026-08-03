@@ -1,6 +1,10 @@
-# GenesisX — Licensed Bitcoin Fund Management
+# GenesisX — Bitcoin Fund Management
 
 A full-stack application for managing Bitcoin accounts with complete transparency, per-client segregated accounts, and on-chain proof for every deposit and withdrawal.
+
+> **Deploying this to Railway?** See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for
+> the full setup guide, including environment variables, first-owner-account
+> bootstrap, and a pre-launch hardening checklist.
 
 ## Project Structure
 
@@ -54,7 +58,7 @@ genesisx/
 ### Frontend: Landing Page (`landing-page/`)
 - Static HTML5 + CSS landing page
 - Responsive design with smooth animations
-- Regulatory information (NYDFS license, fees, terms)
+- How we operate (custody model, fees, contact)
 - Risk disclosure
 - Email contact CTA
 
@@ -129,73 +133,9 @@ genesisx/
 
 ## Deployment on Railway
 
-### 1. Create Railway Services
-
-1. **PostgreSQL Service**:
-   - Add PostgreSQL plugin in Railway
-   - Railway will inject `DATABASE_URL` automatically
-
-2. **Backend Service** (single service):
-   - Connect your GitHub repo
-   - Set build command: `npm run build`
-   - Set start command: `npm start`
-   - Add environment variables:
-     ```
-     DATABASE_URL=<from PostgreSQL plugin>
-     PORT=3000
-     ALLOWED_ORIGIN=https://your-railway-domain.railway.app
-     ```
-
-### 2. Environment Variables
-
-Set these in your Railway Backend service:
-
-```env
-# Database (Railway PostgreSQL provides this automatically)
-DATABASE_URL=postgresql://user:password@host:5432/dbname
-
-# Server
-PORT=3000
-
-# Security
-ALLOWED_ORIGIN=https://your-railway-domain.railway.app
-JWT_SECRET=<generate-a-strong-secret>
-
-# 2FA (Optional)
-TOTP_WINDOW=1
-```
-
-### 3. Build Process
-
-Railway will:
-1. Install all dependencies (`npm install`)
-2. Run build script: `npm run build` (builds admin-tool and client-dashboard)
-3. Start with: `npm start` (runs backend server)
-
-The backend server will:
-- Serve the landing page at `/`
-- Serve built admin dashboard at `/admin`
-- Serve built client dashboard at `/dashboard`
-- Expose API endpoints at `/api/*` and `/auth/*`
-
-### 4. First Deploy Checklist
-
-- [ ] PostgreSQL service created and connected
-- [ ] Backend environment variables set
-- [ ] `DATABASE_URL` is set (from PostgreSQL plugin)
-- [ ] `PORT=3000` is set
-- [ ] `ALLOWED_ORIGIN` is set to your Railway domain
-- [ ] Deploy backend service
-- [ ] Check `/health` endpoint returns `{"ok": true}`
-- [ ] Run database migrations (can be done via Railway CLI or in post-deploy script)
-
-### 5. Run Migrations on Railway
-
-After first deploy, migrate your database:
-
-```bash
-railway run npx prisma migrate deploy
-```
+See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for the full, current setup guide —
+service configuration, environment variables, first-owner-account bootstrap,
+migration notes, and a pre-launch hardening checklist.
 
 ## API Examples
 
