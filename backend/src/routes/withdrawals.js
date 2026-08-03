@@ -3,6 +3,7 @@ const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const { requireStaffAuth, requireOwner } = require("../middleware/auth");
 const { logAction } = require("../lib/audit");
+const { isWithdrawalLocked } = require("../lib/subscriptions");
 
 const router = express.Router();
 router.use(requireStaffAuth);
@@ -20,8 +21,17 @@ router.post("/", async (req, res) => {
   const parsed = createWithdrawalSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
-  const client = await prisma.client.findUnique({ where: { id: parsed.data.clientId } });
+  const client = await prisma.client.findUnique({
+    where: { id: parsed.data.clientId },
+    include: { subscriptions: true },
+  });
   if (!client) return res.status(404).json({ error: "Client not found" });
+
+  if (isWithdrawalLocked(client.subscriptions)) {
+    return res.status(409).json({
+      error: "This client has an active trading subscription and their funds are locked until it ends.",
+    });
+  }
 
   const withdrawal = await prisma.withdrawal.create({
     data: {
