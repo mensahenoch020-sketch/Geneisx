@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import QRCode from "react-qr-code";
 import { TrendingUp, TrendingDown, Activity, ArrowDown, ArrowUp, Clock, ShieldCheck, Download, LogOut, Lock } from "lucide-react";
 import LoginScreen from "./LoginScreen.jsx";
 import { getToken, clearToken, fetchMe, downloadStatement, subscribe, ApiError } from "./api.js";
@@ -291,6 +292,7 @@ function ClientDashboardAuthed({ onLoggedOut }) {
           reference code so we can match it to your account. Deposits are logged
           manually once confirmed on-chain — this usually takes a few hours.
         </div>
+        <DepositQRCode address={client.depositAddress} />
         <DepositField label="Deposit address" value={client.depositAddress} />
         <DepositField label="Your reference code" value={client.depositReference} mono />
       </div>
@@ -667,6 +669,31 @@ function ClientDashboardAuthed({ onLoggedOut }) {
 
         {!isNewAccount && statementsSection}
       </main>
+    </div>
+  );
+}
+
+function DepositQRCode({ address }) {
+  if (!address) return null;
+
+  // Renders the exact same address string shown as text below it — this is
+  // purely a visual re-encoding for scanning convenience, not a separate
+  // source of truth. If SHARED_DEPOSIT_ADDRESS is ever wrong, this QR code
+  // would just as faithfully encode the wrong address, which is exactly why
+  // the raw address is always shown directly underneath for cross-checking.
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        marginBottom: 14,
+        background: COLORS.bone,
+        borderRadius: 10,
+        padding: 16,
+        border: `1px solid ${COLORS.panelBorder}`,
+      }}
+    >
+      <QRCode value={address} size={160} bgColor={COLORS.bone} fgColor={COLORS.ink} />
     </div>
   );
 }
