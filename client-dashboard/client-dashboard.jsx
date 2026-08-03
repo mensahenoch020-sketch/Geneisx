@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { TrendingUp, TrendingDown, Activity, ArrowDown, ArrowUp, Clock, ShieldCheck } from "lucide-react";
+import { TrendingUp, TrendingDown, Activity, ArrowDown, ArrowUp, Clock, ShieldCheck, Download, LogOut, Lock } from "lucide-react";
+import LoginScreen from "./LoginScreen.jsx";
+import { getToken, clearToken, fetchMe, downloadStatement, subscribe, ApiError } from "./api.js";
 
 // Same palette as the admin tool, for visual consistency across the product.
 const COLORS = {
@@ -50,54 +52,51 @@ function useLivePrice(symbol = "bitcoin") {
 const fmtUSD = (n, opts = {}) =>
   n == null ? "—" : n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2, ...opts });
 
-// ---------- Demo account data ----------
-// This represents what a real backend would serve for a logged-in client.
-// It is illustrative only — actual production data would come from the trade ledger.
-const demoClient = {
-  name: "Client Account",
-  deposits: [
-    { id: "d1", amount: 25000, date: daysAgo(210) },
-    { id: "d2", amount: 10000, date: daysAgo(90) },
-  ],
-  withdrawals: [{ id: "w1", amount: 4000, status: "processed", date: daysAgo(45) }],
-  trades: generateTradeHistory(),
-};
+// ---------- Real account data ----------
+// The API returns deposits/withdrawals/trades with lowercase enum-ish string
+// fields already normalized server-side (see backend/src/lib/ledger.js), so
+// the shape here matches what /api/me returns directly — no demo data, no
+// client-side balance math duplicating the server's math.
 
-function daysAgo(n) {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString();
-}
-
-// Generates a plausible-looking history of closed trades over the last year for demo purposes.
-function generateTradeHistory() {
-  const trades = [];
-  let cursor = 220;
-  let seed = 42;
-  const rand = () => {
-    seed = (seed * 1103515245 + 12345) % 2147483648;
-    return seed / 2147483648;
+function normalizeClient(apiClient) {
+  return {
+    name: apiClient.name,
+    email: apiClient.email,
+    depositReference: apiClient.depositReference,
+    depositAddress: apiClient.depositAddress,
+    subscriptionTiers: apiClient.subscriptionTiers || [],
+    activeSubscription: apiClient.activeSubscription
+      ? {
+          tierMonths: apiClient.activeSubscription.tierMonths,
+          priceUsd: Number(apiClient.activeSubscription.priceUsd),
+          startDate: apiClient.activeSubscription.startDate,
+          endDate: apiClient.activeSubscription.endDate,
+        }
+      : null,
+    deposits: apiClient.deposits.map((d) => ({
+      id: d.id,
+      amount: Number(d.amountUsd),
+      date: d.date,
+    })),
+    withdrawals: apiClient.withdrawals.map((w) => ({
+      id: w.id,
+      amount: Number(w.amountUsd),
+      status: w.status.toLowerCase(),
+      destination: w.destination,
+      date: w.processedAt || w.requestedAt,
+    })),
+    trades: apiClient.trades
+      .filter((t) => t.status === "CLOSED" && t.exit != null)
+      .map((t) => ({
+        id: t.id,
+        asset: t.asset,
+        side: t.side.toLowerCase(),
+        size: Number(t.size),
+        entry: Number(t.entry),
+        exit: Number(t.exit),
+        date: t.closedAt || t.date,
+      })),
   };
-  while (cursor > 0) {
-    const gap = 3 + Math.floor(rand() * 9);
-    cursor -= gap;
-    if (cursor < 0) break;
-    const size = 0.05 + rand() * 0.3;
-    const entry = 60000 + rand() * 40000;
-    const side = rand() > 0.4 ? "long" : "short";
-    const moveFactor = (rand() - 0.42) * 0.08; // slight positive skew, still can lose
-    const exit = side === "long" ? entry * (1 + moveFactor) : entry * (1 - moveFactor);
-    trades.push({
-      id: `t${cursor}`,
-      asset: "BTC",
-      side,
-      size: parseFloat(size.toFixed(3)),
-      entry: parseFloat(entry.toFixed(2)),
-      exit: parseFloat(exit.toFixed(2)),
-      date: daysAgo(cursor),
-    });
-  }
-  return trades.reverse();
 }
 
 function tradePnL(t) {
@@ -133,21 +132,445 @@ const RANGES = [
 ];
 
 export default function ClientDashboard() {
+  const [authed, setAuthed] = useState(() => !!getToken());
+
+  if (!authed) {
+    return <LoginScreen onAuthenticated={() => setAuthed(true)} />;
+  }
+
+  return <ClientDashboardAuthed onLoggedOut={() => setAuthed(false)} />;
+}
+
+function ClientDashboardAuthed({ onLoggedOut }) {
   const { price: btcPrice, change: btcChange, status: priceStatus } = useLivePrice("bitcoin");
   const [range, setRange] = useState("30d");
-  const client = demoClient;
+  const [client, setClient] = useState(null);
+  const [loadError, setLoadError] = useState("");
+  const [downloadError, setDownloadError] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const [subscribeError, setSubscribeError] = useState("");
+  const [subscribing, setSubscribing] = useState(false);
+
+  async function reload() {
+    const data = await fetchMe();
+    setClient(normalizeClient(data));
+  }
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const data = await fetchMe();
+        if (mounted) setClient(normalizeClient(data));
+      } catch (err) {
+        if (!mounted) return;
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          onLoggedOut();
+          return;
+        }
+        setLoadError(err.message || "Could not load your account");
+      }
+    }
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [onLoggedOut]);
+
+  function handleLogout() {
+    clearToken();
+    onLoggedOut();
+  }
+
+  async function handleDownload(format) {
+    setDownloadError("");
+    setDownloading(true);
+    try {
+      await downloadStatement(format);
+    } catch (err) {
+      setDownloadError(err.message || "Could not download statement");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function handleSubscribe(tierMonths) {
+    setSubscribeError("");
+    setSubscribing(true);
+    try {
+      await subscribe(tierMonths);
+      await reload();
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        onLoggedOut();
+        return;
+      }
+      setSubscribeError(err.message || "Could not start subscription");
+    } finally {
+      setSubscribing(false);
+    }
+  }
+
+  const rangeDays = RANGES.find((r) => r.key === range).days;
+
+  // This useMemo must run unconditionally on every render — including while
+  // `client` is still null during initial load — or React throws "Rendered
+  // fewer hooks than expected" on the render where client first populates.
+  const chartData = useMemo(() => (client ? buildEquityCurve(client, rangeDays) : []), [client, rangeDays]);
+
+  if (loadError) {
+    return (
+      <div
+        style={{
+          background: COLORS.ink,
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: COLORS.loss,
+          fontFamily: "'Inter', -apple-system, sans-serif",
+          padding: 20,
+          textAlign: "center",
+        }}
+      >
+        {loadError}
+      </div>
+    );
+  }
+
+  if (!client) {
+    return (
+      <div
+        style={{
+          background: COLORS.ink,
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: COLORS.boneDim,
+          fontFamily: "'Inter', -apple-system, sans-serif",
+        }}
+      >
+        Loading your account…
+      </div>
+    );
+  }
 
   const bal = balance(client);
   const deposited = totalDeposited(client);
   const withdrawn = totalWithdrawn(client);
   const pnl = totalPnL(client);
-  const rangeDays = RANGES.find((r) => r.key === range).days;
   const rangePnl = pnlSince(client, rangeDays);
   const rangePnlPct = deposited ? (rangePnl / deposited) * 100 : 0;
 
-  const chartData = useMemo(() => buildEquityCurve(client, rangeDays), [client, rangeDays]);
-
   const recentTrades = [...client.trades].filter((t) => new Date(t.date).getTime() >= Date.now() - rangeDays * 86400000).reverse();
+
+  // Drives which section leads the page. A first-time client with nothing
+  // deposited yet has no use for empty charts and stats — showing those first
+  // just makes the page look broken and buries the one thing they actually
+  // need to do. Once they've deposited, the normal account-first layout makes
+  // more sense, whether or not they've subscribed yet.
+  const isNewAccount = client.deposits.length === 0 && client.trades.length === 0;
+  const hasSubscription = !!client.activeSubscription;
+
+  const depositSection = (
+    <div style={{ marginBottom: 28 }}>
+      <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 12 }}>
+        Deposit instructions
+      </div>
+      <div
+        style={{
+          background: COLORS.panel,
+          border: `1px solid ${COLORS.panelBorder}`,
+          borderRadius: 10,
+          padding: 18,
+        }}
+      >
+        <div style={{ fontSize: 12.5, color: COLORS.boneDim, lineHeight: 1.6, marginBottom: 14 }}>
+          Send BTC to the address below, then message us with the amount and your
+          reference code so we can match it to your account. Deposits are logged
+          manually once confirmed on-chain — this usually takes a few hours.
+        </div>
+        <DepositField label="Deposit address" value={client.depositAddress} />
+        <DepositField label="Your reference code" value={client.depositReference} mono />
+      </div>
+    </div>
+  );
+
+  const performanceSection = (
+    <>
+      {/* Balance hero */}
+      <div style={{ textAlign: "center", padding: "20px 0 8px" }}>
+        <div style={{ fontSize: 12, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>
+          Account balance
+        </div>
+        <div className="mono" style={{ fontSize: 42, fontWeight: 700, letterSpacing: -1 }}>
+          {fmtUSD(bal)}
+        </div>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            marginTop: 10,
+            fontSize: 13.5,
+            color: pnl >= 0 ? COLORS.gain : COLORS.loss,
+          }}
+          className="mono"
+        >
+          {pnl >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+          {pnl >= 0 ? "+" : ""}
+          {fmtUSD(pnl)} all-time P&amp;L
+        </div>
+      </div>
+
+      {/* Range selector */}
+      <div style={{ display: "flex", justifyContent: "center", gap: 4, marginTop: 28, marginBottom: 18 }}>
+        {RANGES.map((r) => (
+          <button
+            key={r.key}
+            onClick={() => setRange(r.key)}
+            style={{
+              background: range === r.key ? COLORS.panel : "transparent",
+              border: `1px solid ${range === r.key ? COLORS.panelBorder : "transparent"}`,
+              color: range === r.key ? COLORS.bone : COLORS.boneDim,
+              borderRadius: 7,
+              padding: "6px 14px",
+              fontSize: 12.5,
+              fontWeight: 500,
+            }}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Chart */}
+      <EquityChart data={chartData} />
+
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 14, marginBottom: 32 }}>
+        <div>
+          <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            {RANGES.find((r) => r.key === range).label} P&amp;L
+          </div>
+          <div className="mono" style={{ fontSize: 18, fontWeight: 600, color: rangePnl >= 0 ? COLORS.gain : COLORS.loss }}>
+            {rangePnl >= 0 ? "+" : ""}
+            {fmtUSD(rangePnl)}
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            Return on deposits
+          </div>
+          <div className="mono" style={{ fontSize: 18, fontWeight: 600, color: rangePnl >= 0 ? COLORS.gain : COLORS.loss }}>
+            {rangePnl >= 0 ? "+" : ""}
+            {rangePnlPct.toFixed(2)}%
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 10,
+          background: "rgba(255,255,255,0.03)",
+          border: `1px solid ${COLORS.panelBorder}`,
+          borderRadius: 10,
+          padding: 14,
+          marginBottom: 32,
+          fontSize: 12,
+          color: COLORS.boneDim,
+          lineHeight: 1.6,
+        }}
+      >
+        <ShieldCheck size={15} color={COLORS.boneDim} style={{ flexShrink: 0, marginTop: 1 }} />
+        <div>
+          This reflects actual trade performance on your account, not a projected or guaranteed rate. Past results don't
+          predict future performance — your balance can go down as well as up.
+        </div>
+      </div>
+
+      {/* Account summary */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 32 }}>
+        <SummaryCard label="Total deposited" value={fmtUSD(deposited)} />
+        <SummaryCard label="Total withdrawn" value={fmtUSD(withdrawn)} />
+      </div>
+
+      {/* Recent activity */}
+      <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 10 }}>
+        Activity — {RANGES.find((r) => r.key === range).label}
+      </div>
+      {recentTrades.length === 0 ? (
+        <div style={{ color: COLORS.boneDim, fontSize: 13.5, padding: "16px 0" }}>No closed trades in this period.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {recentTrades.map((t) => {
+            const p = tradePnL(t);
+            return (
+              <div
+                key={t.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  background: COLORS.panel,
+                  border: `1px solid ${COLORS.panelBorder}`,
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 6,
+                      background: p >= 0 ? "rgba(61,220,151,0.12)" : "rgba(232,96,76,0.12)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {p >= 0 ? <TrendingUp size={13} color={COLORS.gain} /> : <TrendingDown size={13} color={COLORS.loss} />}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>
+                      {t.asset} · {t.side}
+                    </div>
+                    <div style={{ fontSize: 11, color: COLORS.boneDim }}>{new Date(t.date).toLocaleDateString()}</div>
+                  </div>
+                </div>
+                <div className="mono" style={{ fontSize: 13.5, color: p >= 0 ? COLORS.gain : COLORS.loss }}>
+                  {p >= 0 ? "+" : ""}
+                  {fmtUSD(p)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+
+  const subscriptionSection = (
+    <div style={{ marginTop: 40, paddingTop: 24, borderTop: `1px solid ${COLORS.panelBorder}` }}>
+      <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 12 }}>
+        Trading subscription
+      </div>
+      <div
+        style={{
+          background: COLORS.panel,
+          border: `1px solid ${COLORS.panelBorder}`,
+          borderRadius: 10,
+          padding: 18,
+        }}
+      >
+        {client.activeSubscription ? (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <Lock size={14} color={COLORS.gain} />
+              <span style={{ fontSize: 14, fontWeight: 600 }}>
+                Active — {client.activeSubscription.tierMonths} month{client.activeSubscription.tierMonths > 1 ? "s" : ""}
+              </span>
+            </div>
+            <div style={{ fontSize: 12.5, color: COLORS.boneDim, lineHeight: 1.6 }}>
+              Runs until {new Date(client.activeSubscription.endDate).toLocaleDateString()}. Withdrawals are
+              locked while this is active, since your BTC is being actively traded. You can pick a new tier
+              once this one ends.
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 12.5, color: COLORS.boneDim, lineHeight: 1.6, marginBottom: 14 }}>
+              {isNewAccount
+                ? "Once you've deposited, choose a plan below to start trading — the fee comes out of your balance, no separate BTC payment needed."
+                : "No active subscription — your funds aren't currently locked, but new trades won't be opened for your account until you choose a plan. The fee is deducted from your account balance immediately, no separate BTC payment needed."}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {client.subscriptionTiers.map((tier) => (
+                <button
+                  key={tier.tierMonths}
+                  onClick={() => handleSubscribe(tier.tierMonths)}
+                  disabled={subscribing || isNewAccount}
+                  style={{
+                    background: COLORS.ink,
+                    border: `1px solid ${COLORS.panelBorder}`,
+                    borderRadius: 8,
+                    padding: "10px 14px",
+                    color: COLORS.bone,
+                    fontSize: 13,
+                    textAlign: "left",
+                    opacity: subscribing || isNewAccount ? 0.5 : 1,
+                    minWidth: 100,
+                  }}
+                >
+                  <div style={{ fontWeight: 600 }}>
+                    {tier.tierMonths} mo{tier.tierMonths > 1 ? "s" : ""}
+                  </div>
+                  <div className="mono" style={{ fontSize: 12.5, color: COLORS.boneDim, marginTop: 2 }}>
+                    ${tier.priceUsd}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {subscribeError && (
+          <div style={{ color: COLORS.loss, fontSize: 12, marginTop: 12 }}>{subscribeError}</div>
+        )}
+      </div>
+    </div>
+  );
+
+  const statementsSection = (
+    <div style={{ marginTop: 28, paddingTop: 24, borderTop: `1px solid ${COLORS.panelBorder}` }}>
+      <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 12 }}>
+        Statements
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={() => handleDownload("pdf")}
+          disabled={downloading}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            background: COLORS.panel,
+            border: `1px solid ${COLORS.panelBorder}`,
+            borderRadius: 8,
+            padding: "9px 14px",
+            color: COLORS.bone,
+            fontSize: 13,
+            opacity: downloading ? 0.6 : 1,
+          }}
+        >
+          <Download size={13} /> PDF statement
+        </button>
+        <button
+          onClick={() => handleDownload("csv")}
+          disabled={downloading}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            background: COLORS.panel,
+            border: `1px solid ${COLORS.panelBorder}`,
+            borderRadius: 8,
+            padding: "9px 14px",
+            color: COLORS.bone,
+            fontSize: 13,
+            opacity: downloading ? 0.6 : 1,
+          }}
+        >
+          <Download size={13} /> CSV export
+        </button>
+      </div>
+      {downloadError && (
+        <div style={{ color: COLORS.loss, fontSize: 12, marginTop: 10 }}>{downloadError}</div>
+      )}
+    </div>
+  );
 
   return (
     <div style={{ background: COLORS.ink, minHeight: "100vh", color: COLORS.bone, fontFamily: "'Inter', -apple-system, sans-serif" }}>
@@ -192,162 +615,108 @@ export default function ClientDashboard() {
           </div>
           <div style={{ fontSize: 14.5, fontWeight: 600 }}>GenesisX</div>
         </div>
-        <PriceTicker price={btcPrice} change={btcChange} status={priceStatus} />
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <PriceTicker price={btcPrice} change={btcChange} status={priceStatus} />
+          <button
+            onClick={handleLogout}
+            aria-label="Log out"
+            style={{
+              background: "transparent",
+              border: `1px solid ${COLORS.panelBorder}`,
+              borderRadius: 6,
+              color: COLORS.boneDim,
+              width: 30,
+              height: 30,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <LogOut size={13} />
+          </button>
+        </div>
       </header>
 
       <main style={{ maxWidth: 720, margin: "0 auto", padding: "28px 18px 60px" }}>
-        {/* Balance hero */}
-        <div style={{ textAlign: "center", padding: "20px 0 8px" }}>
-          <div style={{ fontSize: 12, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>
-            Account balance
-          </div>
-          <div className="mono" style={{ fontSize: 42, fontWeight: 700, letterSpacing: -1 }}>
-            {fmtUSD(bal)}
-          </div>
+        {isNewAccount && (
           <div
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              marginTop: 10,
-              fontSize: 13.5,
-              color: pnl >= 0 ? COLORS.gain : COLORS.loss,
+              background: "rgba(61,220,151,0.06)",
+              border: `1px solid rgba(61,220,151,0.25)`,
+              borderRadius: 12,
+              padding: 18,
+              marginBottom: 28,
             }}
-            className="mono"
           >
-            {pnl >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-            {pnl >= 0 ? "+" : ""}
-            {fmtUSD(pnl)} all-time P&amp;L
-          </div>
-        </div>
-
-        {/* Range selector */}
-        <div style={{ display: "flex", justifyContent: "center", gap: 4, marginTop: 28, marginBottom: 18 }}>
-          {RANGES.map((r) => (
-            <button
-              key={r.key}
-              onClick={() => setRange(r.key)}
-              style={{
-                background: range === r.key ? COLORS.panel : "transparent",
-                border: `1px solid ${range === r.key ? COLORS.panelBorder : "transparent"}`,
-                color: range === r.key ? COLORS.bone : COLORS.boneDim,
-                borderRadius: 7,
-                padding: "6px 14px",
-                fontSize: 12.5,
-                fontWeight: 500,
-              }}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Chart */}
-        <EquityChart data={chartData} />
-
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 14, marginBottom: 32 }}>
-          <div>
-            <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.5 }}>
-              {RANGES.find((r) => r.key === range).label} P&amp;L
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Welcome — one step to get started</div>
+            <div style={{ fontSize: 13, color: COLORS.boneDim, lineHeight: 1.6 }}>
+              Your account is ready, but there's nothing in it yet. Send BTC to the deposit address below, then
+              let us know so we can match it to your account. Once that's confirmed, your balance and trade
+              history will show up here.
             </div>
-            <div className="mono" style={{ fontSize: 18, fontWeight: 600, color: rangePnl >= 0 ? COLORS.gain : COLORS.loss }}>
-              {rangePnl >= 0 ? "+" : ""}
-              {fmtUSD(rangePnl)}
-            </div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.5 }}>
-              Return on deposits
-            </div>
-            <div className="mono" style={{ fontSize: 18, fontWeight: 600, color: rangePnl >= 0 ? COLORS.gain : COLORS.loss }}>
-              {rangePnl >= 0 ? "+" : ""}
-              {rangePnlPct.toFixed(2)}%
-            </div>
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 10,
-            background: "rgba(255,255,255,0.03)",
-            border: `1px solid ${COLORS.panelBorder}`,
-            borderRadius: 10,
-            padding: 14,
-            marginBottom: 32,
-            fontSize: 12,
-            color: COLORS.boneDim,
-            lineHeight: 1.6,
-          }}
-        >
-          <ShieldCheck size={15} color={COLORS.boneDim} style={{ flexShrink: 0, marginTop: 1 }} />
-          <div>
-            This reflects actual trade performance on your account, not a projected or guaranteed rate. Past results don't
-            predict future performance — your balance can go down as well as up.
-          </div>
-        </div>
-
-        {/* Account summary */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 32 }}>
-          <SummaryCard label="Total deposited" value={fmtUSD(deposited)} />
-          <SummaryCard label="Total withdrawn" value={fmtUSD(withdrawn)} />
-        </div>
-
-        {/* Recent activity */}
-        <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 10 }}>
-          Activity — {RANGES.find((r) => r.key === range).label}
-        </div>
-        {recentTrades.length === 0 ? (
-          <div style={{ color: COLORS.boneDim, fontSize: 13.5, padding: "16px 0" }}>No closed trades in this period.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {recentTrades.map((t) => {
-              const p = tradePnL(t);
-              return (
-                <div
-                  key={t.id}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    background: COLORS.panel,
-                    border: `1px solid ${COLORS.panelBorder}`,
-                    borderRadius: 8,
-                    padding: "10px 14px",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div
-                      style={{
-                        width: 26,
-                        height: 26,
-                        borderRadius: 6,
-                        background: p >= 0 ? "rgba(61,220,151,0.12)" : "rgba(232,96,76,0.12)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      {p >= 0 ? <TrendingUp size={13} color={COLORS.gain} /> : <TrendingDown size={13} color={COLORS.loss} />}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>
-                        {t.asset} · {t.side}
-                      </div>
-                      <div style={{ fontSize: 11, color: COLORS.boneDim }}>{new Date(t.date).toLocaleDateString()}</div>
-                    </div>
-                  </div>
-                  <div className="mono" style={{ fontSize: 13.5, color: p >= 0 ? COLORS.gain : COLORS.loss }}>
-                    {p >= 0 ? "+" : ""}
-                    {fmtUSD(p)}
-                  </div>
-                </div>
-              );
-            })}
           </div>
         )}
+
+        {depositSection}
+
+        {!isNewAccount && !hasSubscription && subscriptionSection}
+
+        {!isNewAccount && performanceSection}
+
+        {!isNewAccount && hasSubscription && subscriptionSection}
+
+        {!isNewAccount && statementsSection}
       </main>
+    </div>
+  );
+}
+
+function DepositField({ label, value, mono }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard unavailable — user can still select and copy manually
+    }
+  }
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+        {label}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          background: COLORS.ink,
+          border: `1px solid ${COLORS.panelBorder}`,
+          borderRadius: 8,
+          padding: "10px 12px",
+        }}
+      >
+        <span className={mono ? "mono" : undefined} style={{ fontSize: 13.5, wordBreak: "break-all", paddingRight: 10 }}>
+          {value || "—"}
+        </span>
+        <button
+          onClick={copy}
+          style={{
+            flexShrink: 0,
+            background: "transparent",
+            border: `1px solid ${COLORS.panelBorder}`,
+            borderRadius: 6,
+            color: COLORS.bone,
+            padding: "5px 10px",
+            fontSize: 11.5,
+          }}
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
     </div>
   );
 }
