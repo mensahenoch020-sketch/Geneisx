@@ -171,3 +171,32 @@ export async function downloadClientStatement(clientId, format) {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+// ---------- Verification ----------
+export async function getVerificationQueue() {
+  return request("/api/verification/queue");
+}
+
+export async function reviewVerification(documentId, approve, note) {
+  return request(`/api/verification/${encodeURIComponent(documentId)}/review`, {
+    method: "POST",
+    body: { approve, ...(note ? { note } : {}) },
+  });
+}
+
+// Returns a viewable URL for the document file. Auth still required — the
+// browser sends the request with cookies/session in most flows, but this app
+// uses bearer tokens, so this is meant to be used with an <img>/<iframe> whose
+// src includes the token isn't possible without a query param. Since staff
+// review is a low-frequency, staff-only action, we open it via a fetch+blob
+// helper instead, matching the pattern used for statement downloads.
+export async function viewVerificationDocument(documentId) {
+  const token = getToken();
+  const res = await fetch(`/api/verification/${encodeURIComponent(documentId)}/file`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (res.status === 401 || res.status === 403) clearToken();
+  if (!res.ok) throw new ApiError(`Could not load document (${res.status})`, res.status);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}

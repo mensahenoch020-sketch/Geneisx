@@ -14,6 +14,9 @@ import {
   closeTrade,
   getExpectedHoldings,
   getRevenue,
+  getVerificationQueue,
+  reviewVerification,
+  viewVerificationDocument,
   runReconciliationCheck,
   getReconciliationHistory,
   downloadClientStatement,
@@ -169,6 +172,8 @@ function AdminDashboardAuthed({ onLoggedOut }) {
   const [newlyCreatedClient, setNewlyCreatedClient] = useState(null); // shows the one-time temp password
   const [clientFilter, setClientFilter] = useState("");
   const [revenue, setRevenue] = useState(null);
+  const [verificationQueue, setVerificationQueue] = useState([]);
+  const [verificationQueueCount, setVerificationQueueCount] = useState(0);
 
   const selected = clients.find((c) => c.id === selectedId) || null;
 
@@ -219,12 +224,23 @@ function AdminDashboardAuthed({ onLoggedOut }) {
     }
   }
 
+  async function reloadVerificationQueue() {
+    try {
+      const data = await getVerificationQueue();
+      setVerificationQueue(data);
+      setVerificationQueueCount(data.length);
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not load verification queue");
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
     async function init() {
       setLoadingClients(true);
       await reloadClientList();
       await reloadRevenue();
+      await reloadVerificationQueue(); // loaded up front so the nav badge count shows before switching tabs
       if (mounted) setLoadingClients(false);
     }
     init();
@@ -236,6 +252,7 @@ function AdminDashboardAuthed({ onLoggedOut }) {
 
   useEffect(() => {
     if (view === "reconciliation") reloadReconciliation();
+    if (view === "verification") reloadVerificationQueue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
@@ -387,6 +404,17 @@ function AdminDashboardAuthed({ onLoggedOut }) {
     }
   }
 
+  async function handleReviewDocument(documentId, approve, note) {
+    setActionError("");
+    try {
+      await reviewVerification(documentId, approve, note);
+      await reloadVerificationQueue();
+      await reloadClientList(); // client summaries include verificationStatus indirectly via re-fetch if ever surfaced there
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not submit review");
+    }
+  }
+
   function handleLogout() {
     clearToken();
     onLoggedOut();
@@ -476,6 +504,41 @@ function AdminDashboardAuthed({ onLoggedOut }) {
             }}
           >
             <Scale size={12} /> Reconciliation
+          </button>
+          <button
+            onClick={() => {
+              setView("verification");
+              setSelectedId(null);
+            }}
+            style={{
+              background: view === "verification" ? COLORS.panelBorder : "transparent",
+              color: view === "verification" ? COLORS.bone : COLORS.boneDim,
+              border: "none",
+              borderRadius: 6,
+              padding: "6px 14px",
+              fontSize: 12.5,
+              fontWeight: 500,
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            <ShieldCheck size={12} /> Verification
+            {verificationQueueCount > 0 && (
+              <span
+                style={{
+                  background: COLORS.signal,
+                  color: COLORS.ink,
+                  borderRadius: 10,
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  padding: "1px 6px",
+                  marginLeft: 2,
+                }}
+              >
+                {verificationQueueCount}
+              </span>
+            )}
           </button>
         </nav>
 
@@ -635,6 +698,8 @@ function AdminDashboardAuthed({ onLoggedOut }) {
         <main style={{ flex: 1, padding: "24px 32px" }}>
           {view === "reconciliation" ? (
             <ReconciliationPanel totals={totals} records={reconciliations} onSubmit={addReconciliation} btcPrice={btcPrice} />
+          ) : view === "verification" ? (
+            <VerificationQueuePanel queue={verificationQueue} onReview={handleReviewDocument} />
           ) : !selected ? (
             <OverviewPanel clients={clients} totals={totals} revenue={revenue} onAddClient={() => setShowAddClient(true)} />
           ) : (
@@ -760,6 +825,134 @@ function EmptyState({ onAddClient }) {
       >
         Add first client
       </button>
+    </div>
+  );
+}
+
+function VerificationQueuePanel({ queue, onReview }) {
+  return (
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: -0.3, display: "flex", alignItems: "center", gap: 8 }}>
+          <ShieldCheck size={19} /> Verification queue
+        </h1>
+        <p style={{ color: COLORS.boneDim, fontSize: 13.5, marginTop: 4, maxWidth: 560, lineHeight: 1.6 }}>
+          Client-submitted ID documents awaiting manual review. This isn't automated — approving or rejecting is
+          your judgment call. Verification status doesn't currently block deposits, subscriptions, or withdrawals.
+        </p>
+      </div>
+
+      {queue.length === 0 ? (
+        <div style={{ color: COLORS.boneDim, fontSize: 13.5, padding: "24px 0" }}>Nothing pending review.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {queue.map((doc) => (
+            <VerificationQueueRow key={doc.id} doc={doc} onReview={onReview} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VerificationQueueRow({ doc, onReview }) {
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewError, setPreviewError] = useState("");
+  const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [showRejectNote, setShowRejectNote] = useState(false);
+
+  async function loadPreview() {
+    if (previewUrl) return;
+    try {
+      const url = await viewVerificationDocument(doc.id);
+      setPreviewUrl(url);
+    } catch (err) {
+      setPreviewError(err.message || "Could not load document");
+    }
+  }
+
+  async function handleDecision(approve) {
+    setSubmitting(true);
+    try {
+      await onReview(doc.id, approve, approve ? undefined : note.trim() || undefined);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        background: COLORS.panel,
+        border: `1px solid ${COLORS.panelBorder}`,
+        borderRadius: 10,
+        padding: 16,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{doc.client.name}</div>
+          <div style={{ fontSize: 12, color: COLORS.boneDim, marginTop: 2 }}>{doc.client.email}</div>
+          <div style={{ fontSize: 11.5, color: COLORS.boneDim, marginTop: 6 }} className="mono">
+            {doc.country} · {doc.documentType.replace(/_/g, " ")} · submitted {new Date(doc.submittedAt).toLocaleDateString()}
+          </div>
+        </div>
+        <button onClick={loadPreview} style={{ ...secondaryBtnStyle, padding: "7px 12px" }}>
+          {previewUrl ? "Loaded" : "View document"}
+        </button>
+      </div>
+
+      {previewError && <div style={{ color: COLORS.loss, fontSize: 12, marginTop: 10 }}>{previewError}</div>}
+
+      {previewUrl && (
+        <div style={{ marginTop: 12 }}>
+          {doc.mimeType === "application/pdf" ? (
+            <iframe src={previewUrl} title={doc.fileName} style={{ width: "100%", height: 400, border: `1px solid ${COLORS.panelBorder}`, borderRadius: 8 }} />
+          ) : (
+            <img
+              src={previewUrl}
+              alt={doc.fileName}
+              style={{ maxWidth: "100%", maxHeight: 400, borderRadius: 8, border: `1px solid ${COLORS.panelBorder}` }}
+            />
+          )}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <button
+          onClick={() => handleDecision(true)}
+          disabled={submitting}
+          style={{ ...primaryBtnStyle, opacity: submitting ? 0.6 : 1 }}
+        >
+          <Check size={14} /> Approve
+        </button>
+        {!showRejectNote ? (
+          <button
+            onClick={() => setShowRejectNote(true)}
+            disabled={submitting}
+            style={{ ...secondaryBtnStyle, opacity: submitting ? 0.6 : 1 }}
+          >
+            Reject
+          </button>
+        ) : (
+          <>
+            <input
+              placeholder="Reason (shown to client)"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              style={{ ...inputStyle, width: 220, marginBottom: 0, padding: "7px 10px", fontSize: 12.5 }}
+            />
+            <button
+              onClick={() => handleDecision(false)}
+              disabled={submitting}
+              style={{ ...secondaryBtnStyle, color: COLORS.loss, borderColor: "rgba(232,96,76,0.4)", opacity: submitting ? 0.6 : 1 }}
+            >
+              Confirm reject
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
