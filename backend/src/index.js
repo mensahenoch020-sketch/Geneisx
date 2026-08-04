@@ -71,6 +71,7 @@ app.use("/api/verification", verificationStaffRoutes);
 app.use("/api/me/statement", statementsSelfRoutes);
 app.use("/api/me/verification", verificationSelfRoutes);
 app.use("/api/me", meRoutes);
+app.use("/api/notifications", require("./routes/notifications"));
 
 // ========== Frontend Routing ==========
 // All three frontends are copied into backend/public/<name> by the root build
