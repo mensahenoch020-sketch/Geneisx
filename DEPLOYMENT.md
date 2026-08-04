@@ -7,9 +7,16 @@ project, plus the hardening steps worth doing before real client funds touch it.
 
 This is a monorepo, but it deploys as **one Railway service**. The root
 `package.json` build step compiles `admin-tool` and `client-dashboard` (React/
-Vite apps) and copies their output — along with the static `landing-page` — into
-`backend/public/{admin,dashboard,landing}`. The backend Express server then
-serves all three from inside its own folder, plus the API, on one port.
+Vite apps) and copies their output into `backend/public/{admin,client}`. The
+backend Express server then serves both from inside its own folder, plus the
+API, on one port.
+
+`client-dashboard` is a single merged app covering the public marketing site,
+login/signup, and the authenticated dashboard — there's no separate landing
+page or separate `/dashboard` app anymore. Everything at `/` (other than
+`/admin`, `/api`, `/auth`, `/health`) is served the same `index.html`, and the
+app's own navigation (see `client-dashboard/App.jsx`) decides what to show
+based on whether the visitor is logged in.
 
 **Railway service settings should be:**
 - Root Directory: `/` (repo root) — **not** `backend`
@@ -17,10 +24,9 @@ serves all three from inside its own folder, plus the API, on one port.
 - Start command: uses root `railway.json` → runs a safe Prisma deploy step, then `npm start`
 
 If Root Directory is ever set to `backend` instead, the build will still run
-(the backend's own `npm install` succeeds), but `/admin` and `/dashboard` will
-404 because the frontend build never happens and `backend/public/{admin,dashboard}`
-won't exist. `/` will still partially work only if a stray `backend/public/index.html`
-happens to be present. If you see this, set Root Directory back to `/`.
+(the backend's own `npm install` succeeds), but `/` and `/admin` will 404
+because the frontend build never happens and `backend/public/{admin,client}`
+won't exist. If you see this, set Root Directory back to `/`.
 
 ## 2. First-time setup on Railway
 
@@ -216,7 +222,27 @@ The rate is defined once, at the top of `backend/src/routes/trades.js`
 for subscription revenue, performance-fee revenue, and combined total —
 pulled from `GET /api/clients/revenue/summary`.
 
-## 8. What's still manual / not automated
+## 8. Identity verification (manual, staff-reviewed)
+
+Clients can upload a government-issued ID photo from their dashboard. No
+automated ID/liveness checking is used — a staff member reviews each
+submission by eye in the admin tool's Verification tab and approves or
+rejects it. This does **not** currently block or gate anything (deposits,
+subscriptions, withdrawals all work regardless of verification status) — it's
+purely a status tracker until/unless you decide to enforce it.
+
+- Documents are stored directly in Postgres (`fileData Bytes` column on
+  `VerificationDocument`) — no new file storage service or env var needed.
+  Fine at small scale; revisit if document volume grows large, since
+  database storage costs more per GB than dedicated file storage.
+- No SSN or other sensitive text field is collected — only a document photo,
+  regardless of country selected.
+- Country and document-type options are defined in
+  `backend/src/lib/verificationDocTypes.js` — add more countries there as
+  needed; anything not explicitly listed falls back to a generic
+  passport/national-ID/driver's-license option set.
+
+## 9. What's still manual / not automated
 
 - **Reconciliation** is a manual entry — you type in what the wallet/exchange
   actually shows, and the system diffs it against the ledger. There's no live

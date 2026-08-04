@@ -12,23 +12,28 @@ A full-stack application for managing Bitcoin accounts with complete transparenc
 genesisx/
 ├── backend/              # Express API server + Prisma ORM
 │   ├── src/
-│   │   ├── index.js      # Main server (serves all frontends)
+│   │   ├── index.js      # Main server (serves both frontends)
 │   │   ├── routes/       # API endpoints (auth, clients, trades, etc.)
 │   │   └── ...
 │   ├── prisma/
 │   │   └── schema.prisma # Database schema
 │   └── package.json
-├── landing-page/         # Static HTML landing page
-│   ├── index.html        # Main page
-│   └── package.json
-├── admin-tool/           # React admin dashboard (staff tool)
+├── admin-tool/           # React admin app (staff tool)
 │   ├── dashboard.jsx     # Main component
 │   ├── main.jsx          # Entry point
 │   ├── index.html        # Vite entry
 │   ├── vite.config.js    # Vite configuration
 │   └── package.json
-├── client-dashboard/     # React client dashboard (client-facing)
-│   ├── client-dashboard.jsx
+├── client-dashboard/     # React client app — marketing site + login +
+│   │                     # dashboard, all merged into one app (see App.jsx)
+│   ├── App.jsx           # Top-level shell: nav + routes between marketing/
+│   │                     # login/dashboard views based on auth state
+│   ├── MarketingSite.jsx # Public marketing content (hero, fees, risk, etc.)
+│   ├── SiteNav.jsx       # Shared nav bar, adapts to logged-in state
+│   ├── client-dashboard.jsx # The authenticated dashboard itself
+│   ├── LoginScreen.jsx   # Login / signup
+│   ├── VerificationPanel.jsx # ID verification upload
+│   ├── theme.css         # Shared visual theme for the whole client app
 │   ├── main.jsx
 │   ├── index.html
 │   ├── vite.config.js
@@ -47,49 +52,46 @@ genesisx/
 - **2FA support**: TOTP-based two-factor authentication
 - **Endpoints**:
   - `/auth/staff` — Staff login & TOTP management
-  - `/auth/client` — Client login
+  - `/auth/client` — Client login & signup
   - `/api/clients` — Manage clients (staff only)
   - `/api/deposits` — Log deposits with on-chain proof
   - `/api/withdrawals` — Request & process withdrawals
   - `/api/trades` — Log trades (long/short)
   - `/api/reconciliation` — Verify ledger vs. wallet balance
+  - `/api/verification` — Staff review of client-submitted ID documents
   - `/api/me` — Client's own data (client-facing)
 
-### Frontend: Landing Page (`landing-page/`)
-- Static HTML5 + CSS landing page
-- Responsive design with smooth animations
-- How we operate (custody model, fees, contact)
-- Risk disclosure
-- Email contact CTA
+### Frontend: Client site (`client-dashboard/`)
+One React app covering both the public marketing site and the authenticated
+client dashboard — not two separate apps. `App.jsx` decides which to show
+based on login state, and the nav bar (`SiteNav.jsx`) stays visible and
+adapts either way, so it behaves like one continuous website rather than
+handing off to a different app after signing in.
+
+- **Logged out**: hero, "how it works," live market prices, crypto news
+  links, fee structure, risk disclosure, contact — plus sign in / sign up
+- **Logged in**: account balance, P&L over various time ranges, equity curve
+  chart, transaction history, deposit instructions with QR code, trading
+  subscription tiers, identity verification upload, statement export
+  (PDF/CSV) — marketing sections (Markets, Fees) stay reachable via the nav
 
 **Served at:** `/`
 
-### Frontend: Admin Dashboard (`admin-tool/`)
+### Frontend: Admin app (`admin-tool/`)
 - React app (Vite + JSX)
 - Staff tool for managing clients and trades
 - Features:
-  - Client management (add, view, filter)
+  - Client management (add, view, filter, search by deposit reference)
   - Deposit logging with on-chain proof
   - Withdrawal request + approval workflow
-  - Trade logging (long/short, open/closed)
+  - Trade logging (long/short, open/closed) and closing open positions
   - Real-time BTC price ticker
   - Reconciliation panel (compare ledger vs. wallet)
+  - Identity verification review queue (approve/reject client documents)
+  - Revenue summary (subscription + performance fee totals)
   - Audit trail
 
 **Served at:** `/admin`
-
-### Frontend: Client Dashboard (`client-dashboard/`)
-- React app (Vite + JSX)
-- Client-facing dashboard
-- Features:
-  - Account balance display
-  - P&L over various time ranges (1W, 1M, 3M, 6M, 1Y)
-  - Equity curve chart
-  - Transaction history
-  - Real-time BTC price
-  - Read-only view of own account data
-
-**Served at:** `/dashboard`
 
 ## Setup
 
@@ -126,9 +128,8 @@ genesisx/
    ```bash
    npm run dev
    # Backend runs on http://localhost:3001
-   # Landing page served on http://localhost:3001/
-   # Admin dashboard on http://localhost:3001/admin (after build)
-   # Client dashboard on http://localhost:3001/dashboard (after build)
+   # Client site (marketing + dashboard) served on http://localhost:3001/ (after build)
+   # Admin app on http://localhost:3001/admin (after build)
    ```
 
 ## Deployment on Railway

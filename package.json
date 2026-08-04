@@ -1,16 +1,15 @@
 {
   "name": "genesisx",
   "version": "1.0.0",
-  "description": "GenesisX — Licensed Bitcoin Fund Management",
+  "description": "GenesisX — Bitcoin Fund Management",
   "private": true,
   "workspaces": [
     "backend",
-    "landing-page",
     "admin-tool",
     "client-dashboard"
   ],
   "scripts": {
-    "dev": "concurrently \"cd backend && npm run dev\" \"cd landing-page && npm run dev\"",
+    "dev": "concurrently \"cd backend && npm run dev\" \"cd client-dashboard && npm run dev\"",
     "build": "bash scripts/build.sh",
     "start": "cd backend && npm start"
   },
