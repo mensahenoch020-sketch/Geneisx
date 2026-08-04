@@ -63,14 +63,50 @@ model Client {
   depositReference   String   @unique // shown alongside the shared deposit address; client includes this when notifying staff of a deposit so it can be matched to their account
   contact            String?
   walletRef          String?
+  verificationStatus VerificationStatus @default(UNVERIFIED)
   createdAt          DateTime @default(now())
 
-  deposits     Deposit[]
-  withdrawals  Withdrawal[]
-  trades       Trade[]
+  deposits      Deposit[]
+  withdrawals   Withdrawal[]
+  trades        Trade[]
   subscriptions Subscription[]
+  verificationDocuments VerificationDocument[]
 
   @@map("clients")
+}
+
+enum VerificationStatus {
+  UNVERIFIED   // never submitted anything
+  PENDING      // document submitted, awaiting staff review
+  VERIFIED     // staff approved
+  REJECTED     // staff rejected — client can resubmit
+}
+
+// A client-submitted identity document, reviewed manually by staff — no
+// automated ID/liveness checking, by design (see DEPLOYMENT.md). Not currently
+// used to gate any feature (deposits, subscriptions, withdrawals all work
+// regardless of verification status) — this only tracks status for staff
+// visibility until/unless enforcement is turned on later.
+model VerificationDocument {
+  id           String   @id @default(cuid())
+  client       Client   @relation(fields: [clientId], references: [id])
+  clientId     String
+  country      String   // ISO country code selected at upload time, e.g. "US", "GB" — drives which document type was requested
+  documentType String   // e.g. "passport", "drivers_license", "national_id" — free text, not an enum, since requirements vary a lot by country
+  fileName     String
+  mimeType     String
+  fileData     Bytes    // raw file bytes, stored directly in Postgres — see
+                         // DEPLOYMENT.md for why, and the tradeoff at scale
+  fileSizeBytes Int
+  status       VerificationStatus @default(PENDING)
+  reviewedBy   String?  // User.id of the staff member who reviewed it
+  reviewedAt   DateTime?
+  reviewNote   String?  // optional staff note, e.g. reason for rejection
+  submittedAt  DateTime @default(now())
+
+  @@map("verification_documents")
+  @@index([clientId])
+  @@index([status])
 }
 
 model Deposit {
