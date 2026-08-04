@@ -3,9 +3,20 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from
 import SiteNav from "./SiteNav.jsx";
 import MarketingSite from "./MarketingSite.jsx";
 import LoginScreen from "./LoginScreen.jsx";
-import ClientDashboard from "./client-dashboard.jsx";
 import SettingsPage from "./SettingsPage.jsx";
 import { getToken, clearToken } from "./api.js";
+import { AccountProvider } from "./dashboard/AccountContext.jsx";
+import DashboardShell from "./dashboard/DashboardShell.jsx";
+import OverviewPage from "./dashboard/pages/OverviewPage.jsx";
+import PortfolioPage from "./dashboard/pages/PortfolioPage.jsx";
+import WalletPage from "./dashboard/pages/WalletPage.jsx";
+import WatchlistPage from "./dashboard/pages/WatchlistPage.jsx";
+import TradePage from "./dashboard/pages/TradePage.jsx";
+import TransactionsPage from "./dashboard/pages/TransactionsPage.jsx";
+import InsightsPage from "./dashboard/pages/InsightsPage.jsx";
+import AnalyticsPage from "./dashboard/pages/AnalyticsPage.jsx";
+import MarketTrendsPage from "./dashboard/pages/MarketTrendsPage.jsx";
+import SupportPage from "./dashboard/pages/SupportPage.jsx";
 
 // Real routes now instead of useState view-switching — marketing, sign in,
 // dashboard, and settings each have their own URL, so refresh/back-button/
@@ -48,34 +59,76 @@ function AppShell({ authed, setAuthed }) {
   }
 
   return (
-    <>
-      <SiteNav authed={authed} onNavigate={handleNavigate} onLogout={handleLoggedOut} />
-      <Routes>
-        <Route path="/" element={<MarketingSite onNavigate={handleNavigate} />} />
-        <Route
-          path="/signin"
-          element={authed ? <Navigate to="/dashboard" replace /> : <LoginScreen onAuthenticated={handleAuthenticated} />}
-        />
-        <Route
-          path="/dashboard"
-          element={
-            <RequireAuth authed={authed}>
-              <ClientDashboard onLoggedOut={handleLoggedOut} />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <RequireAuth authed={authed}>
-              <SettingsPage />
-            </RequireAuth>
-          }
-        />
-        {/* Any unknown path falls back to the marketing homepage rather than a dead 404. */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </>
+    <Routes>
+      {/* Marketing + sign-in keep the top SiteNav. The dashboard section below
+          is a completely different shell (sidebar, no top SiteNav) — mixing
+          the two here (rather than always rendering SiteNav) is what makes
+          the sidebar the dashboard's real navigation instead of a second nav
+          bar stacked on top of it. */}
+      <Route
+        path="/"
+        element={
+          <>
+            <SiteNav authed={authed} onNavigate={handleNavigate} onLogout={handleLoggedOut} />
+            <MarketingSite onNavigate={handleNavigate} />
+          </>
+        }
+      />
+      <Route
+        path="/signin"
+        element={
+          authed ? (
+            <Navigate to="/dashboard" replace />
+          ) : (
+            <>
+              <SiteNav authed={authed} onNavigate={handleNavigate} onLogout={handleLoggedOut} />
+              <LoginScreen onAuthenticated={handleAuthenticated} />
+            </>
+          )
+        }
+      />
+
+      <Route
+        path="/dashboard/*"
+        element={
+          <RequireAuth authed={authed}>
+            <AccountProvider onLoggedOut={handleLoggedOut}>
+              <DashboardShell onLoggedOut={handleLoggedOut}>
+                <Routes>
+                  <Route index element={<OverviewPage />} />
+                  <Route path="portfolio" element={<PortfolioPage />} />
+                  <Route path="wallet" element={<WalletPage />} />
+                  <Route path="watchlist" element={<WatchlistPage />} />
+                  <Route path="trade" element={<TradePage />} />
+                  <Route path="transactions" element={<TransactionsPage />} />
+                  <Route path="insights" element={<InsightsPage />} />
+                  <Route path="analytics" element={<AnalyticsPage />} />
+                  <Route path="market-trends" element={<MarketTrendsPage />} />
+                  <Route path="support" element={<SupportPage />} />
+                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                </Routes>
+              </DashboardShell>
+            </AccountProvider>
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/settings"
+        element={
+          <RequireAuth authed={authed}>
+            <AccountProvider onLoggedOut={handleLoggedOut}>
+              <DashboardShell onLoggedOut={handleLoggedOut}>
+                <SettingsPage />
+              </DashboardShell>
+            </AccountProvider>
+          </RequireAuth>
+        }
+      />
+
+      {/* Any unknown path falls back to the marketing homepage rather than a dead 404. */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
 

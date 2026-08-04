@@ -199,7 +199,7 @@ function PasswordSection() {
 
 export default function SettingsPage() {
   return (
-    <div className="wrap" style={{ padding: "36px 20px 80px", maxWidth: 640 }}>
+    <div style={{ maxWidth: 640 }}>
       <Link
         to="/dashboard"
         style={{ display: "inline-flex", alignItems: "center", gap: 6, color: COLORS.boneDim, fontSize: 13, marginBottom: 24, textDecoration: "none" }}
