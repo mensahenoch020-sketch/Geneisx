@@ -63,42 +63,20 @@ All `/api/*` routes require `Authorization: Bearer <token>`.
 - Reconciliation's "actual" wallet balance is still manual entry — pulling a live
   balance from a block explorer or exchange API is a good Phase 4/5 candidate once
   your custody tooling is finalized.
-- No client self-service password reset yet (Phase 3).
+- No client self-service password reset yet — clients set their own password
+  on first login (replacing the staff-issued temp password) via
+  `POST /auth/client/change-password`, but there's no "forgot password" email
+  flow if they lose access entirely. A staff member would need to reset via
+  direct database access or a future admin-triggered reset endpoint.
 - Fixed-term/APR/lock-up logic is still intentionally excluded, as discussed.
 
 
 
 ## Setting this up on Railway
 
-1. **Create a new Railway project**, add a **Postgres** plugin — Railway will set
-   `DATABASE_URL` for you automatically.
-2. **Push this code to a GitHub repo**, connect it to a Railway service.
-3. In the Railway service's **Variables** tab, set:
-   - `JWT_SECRET` — generate one with:
-     `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
-   - `ALLOWED_ORIGIN` — your frontend's real URL once it's deployed (don't leave this
-     as `*` once real clients are involved)
-   - `NODE_ENV=production`
-4. **Run migrations** — either via Railway's deploy hook or manually:
-   ```
-   npx prisma migrate deploy
-   ```
-5. **Create your Owner account** — run once, with real values:
-   ```
-   OWNER_EMAIL="you@yourdomain.com" OWNER_NAME="Your Name" OWNER_PASSWORD="a-long-real-password" node prisma/seed-owner.js
-   ```
-6. **Log in and enable 2FA** — the Owner account cannot log in via the normal endpoint
-   until this is done. Because a brand-new Owner has no session token yet, use the
-   one-time bootstrap routes (email+password only, no token) instead of the normal
-   `/totp/setup` / `/totp/verify`:
-   - `POST /auth/staff/totp/bootstrap-setup` with `{ email, password }` — returns a QR
-     code. Scan it with Google Authenticator / Authy.
-   - `POST /auth/staff/totp/bootstrap-verify` with `{ email, password, token }` (the
-     6-digit code from your app) — confirms enrollment.
-   - These two routes refuse to run again once `totpEnabled` is true for that account,
-     so they can't be used to silently re-enroll 2FA on an already-secured account.
-   - From then on, use normal `POST /auth/staff/login`, which requires `totpToken`
-     every time.
+See [`../DEPLOYMENT.md`](../DEPLOYMENT.md) for the full setup guide (this repo
+deploys as a single Railway service from the repo root, not from `backend/`
+alone — see that doc for why, and for the correct migration command).
 
 ## Local development
 
