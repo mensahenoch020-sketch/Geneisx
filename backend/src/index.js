@@ -14,6 +14,7 @@ const tradesRoutes = require("./routes/trades");
 const reconciliationRoutes = require("./routes/reconciliation");
 const meRoutes = require("./routes/me");
 const { staffRouter: statementsStaffRoutes, selfRouter: statementsSelfRoutes } = require("./routes/statements");
+const { staffRouter: verificationStaffRoutes, selfRouter: verificationSelfRoutes } = require("./routes/verification");
 
 const app = express();
 
@@ -59,14 +60,16 @@ app.use("/api/withdrawals", withdrawalsRoutes);
 app.use("/api/trades", tradesRoutes);
 app.use("/api/reconciliation", reconciliationRoutes);
 app.use("/api/statements", statementsStaffRoutes);
+app.use("/api/verification", verificationStaffRoutes);
 
 // Client-facing (client dashboard)
-// IMPORTANT: /api/me/statement must be mounted BEFORE /api/me — Express matches
-// mount prefixes in registration order, so if the broader /api/me mount came
-// first, any request to /api/me/statement would be swallowed by meRoutes
-// (which only defines "/" and "/performance") and 404 before ever reaching
-// the statements router.
+// IMPORTANT: /api/me/statement and /api/me/verification must be mounted
+// BEFORE /api/me — Express matches mount prefixes in registration order, so
+// if the broader /api/me mount came first, requests to either of these would
+// be swallowed by meRoutes (which only defines "/" and "/performance") and
+// 404 before ever reaching the intended router.
 app.use("/api/me/statement", statementsSelfRoutes);
+app.use("/api/me/verification", verificationSelfRoutes);
 app.use("/api/me", meRoutes);
 
 // ========== Frontend Routing ==========
@@ -76,22 +79,23 @@ app.use("/api/me", meRoutes);
 // correctly no matter what Railway's configured root directory is.
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 
-// Serve landing page at root
-app.use("/", express.static(path.join(PUBLIC_DIR, "landing")));
-app.get("/", (req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, "landing", "index.html"));
-});
-
-// Serve admin dashboard at /admin
+// Serve admin dashboard at /admin — kept fully separate from the client-facing
+// site, as intended (different login, different app, different audience).
 app.use("/admin", express.static(path.join(PUBLIC_DIR, "admin")));
 app.get("/admin/*", (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, "admin", "index.html"));
 });
 
-// Serve client dashboard at /dashboard
-app.use("/dashboard", express.static(path.join(PUBLIC_DIR, "dashboard")));
-app.get("/dashboard/*", (req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, "dashboard", "index.html"));
+// Serve the merged client site (marketing pages + login + dashboard, all one
+// React app now — see client-dashboard/App.jsx) at everything else. This
+// used to be two separate apps at "/" (static landing page) and "/dashboard"
+// (a separate React app); they're now one app with client-side navigation
+// instead of separate server routes, so any non-/admin, non-/api, non-/auth
+// path should serve the same index.html and let the app's own routing decide
+// what to show.
+app.use("/", express.static(path.join(PUBLIC_DIR, "client")));
+app.get("*", (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "client", "index.html"));
 });
 
 // 404 handler
