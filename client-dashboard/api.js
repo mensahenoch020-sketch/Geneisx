@@ -127,4 +127,42 @@ export async function downloadStatement(format) {
   URL.revokeObjectURL(url);
 }
 
+export async function getVerificationStatus() {
+  return request("/api/me/verification");
+}
+
+export async function getDocumentTypes(country) {
+  return request(`/api/me/verification/document-types?country=${encodeURIComponent(country)}`);
+}
+
+// Multipart upload — bypasses the shared JSON request() helper since this
+// sends FormData, not a JSON body, but still attaches the auth header and
+// applies the same auth-error handling as everything else.
+export async function submitVerificationDocument({ country, documentType, file }) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("country", country);
+  formData.append("documentType", documentType);
+  formData.append("document", file);
+
+  const res = await fetch("/api/me/verification", {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  if (res.status === 401 || res.status === 403) clearToken();
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    // no JSON body
+  }
+  if (!res.ok) {
+    throw new ApiError(data?.error || `Upload failed (${res.status})`, res.status);
+  }
+  return data;
+}
+
 export { ApiError };

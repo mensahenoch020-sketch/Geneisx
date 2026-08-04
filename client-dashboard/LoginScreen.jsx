@@ -3,13 +3,13 @@ import { ShieldCheck } from "lucide-react";
 import { login, signup, changePassword } from "./api.js";
 
 const COLORS = {
-  ink: "#0E1114",
-  panel: "#161A1F",
-  panelBorder: "#262B32",
-  bone: "#E8E4DA",
-  boneDim: "#9A9689",
-  gain: "#3DDC97",
-  loss: "#E8604C",
+  ink: "#070A08",
+  panel: "#0E1510",
+  panelBorder: "#1C2A20",
+  bone: "#E7EFE9",
+  boneDim: "#8CA294",
+  gain: "#3FE28E",
+  loss: "#e8604c",
 };
 
 const inputStyle = {
@@ -144,13 +144,11 @@ export default function LoginScreen({ onAuthenticated }) {
         alignItems: "center",
         justifyContent: "center",
         color: COLORS.bone,
-        fontFamily: "'Inter', -apple-system, sans-serif",
-        padding: 20,
+        fontFamily: "'Space Grotesk', -apple-system, sans-serif",
+        padding: "100px 20px 20px",
       }}
     >
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        * { box-sizing: border-box; }
         input::placeholder { color: ${COLORS.boneDim}; }
         button { font-family: inherit; cursor: pointer; }
       `}</style>

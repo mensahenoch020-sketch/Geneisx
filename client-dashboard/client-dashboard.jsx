@@ -1,19 +1,20 @@
 import React, { useState, useEffect, useMemo } from "react";
 import QRCode from "react-qr-code";
-import { TrendingUp, TrendingDown, Activity, ArrowDown, ArrowUp, Clock, ShieldCheck, Download, LogOut, Lock } from "lucide-react";
-import LoginScreen from "./LoginScreen.jsx";
-import { getToken, clearToken, fetchMe, downloadStatement, subscribe, ApiError } from "./api.js";
+import { TrendingUp, TrendingDown, Activity, ArrowDown, ArrowUp, Clock, ShieldCheck, Download, Lock } from "lucide-react";
+import VerificationPanel from "./VerificationPanel.jsx";
+import { fetchMe, downloadStatement, subscribe, ApiError } from "./api.js";
 
-// Same palette as the admin tool, for visual consistency across the product.
+// Matches the marketing site's palette (theme.css) — merged into one visual
+// identity now that the landing page and dashboard are one app.
 const COLORS = {
-  ink: "#0E1114",
-  panel: "#161A1F",
-  panelBorder: "#262B32",
-  bone: "#E8E4DA",
-  boneDim: "#9A9689",
-  gain: "#3DDC97",
-  loss: "#E8604C",
-  signal: "#F2B84B",
+  ink: "#070A08",
+  panel: "#0E1510",
+  panelBorder: "#1C2A20",
+  bone: "#E7EFE9",
+  boneDim: "#8CA294",
+  gain: "#3FE28E",
+  loss: "#e8604c",
+  signal: "#E8B84C",
 };
 
 function useLivePrice(symbol = "bitcoin") {
@@ -132,17 +133,11 @@ const RANGES = [
   { key: "365d", label: "1Y", days: 365 },
 ];
 
-export default function ClientDashboard() {
-  const [authed, setAuthed] = useState(() => !!getToken());
-
-  if (!authed) {
-    return <LoginScreen onAuthenticated={() => setAuthed(true)} />;
-  }
-
-  return <ClientDashboardAuthed onLoggedOut={() => setAuthed(false)} />;
-}
-
-function ClientDashboardAuthed({ onLoggedOut }) {
+// App.jsx now owns the authed/not-authed decision and renders either
+// LoginScreen or this component directly — this file used to have its own
+// top-level wrapper doing that same check, which is now redundant since the
+// whole site (marketing + dashboard) shares one auth gate at the App level.
+export default function ClientDashboard({ onLoggedOut }) {
   const { price: btcPrice, change: btcChange, status: priceStatus } = useLivePrice("bitcoin");
   const [range, setRange] = useState("30d");
   const [client, setClient] = useState(null);
@@ -177,11 +172,6 @@ function ClientDashboardAuthed({ onLoggedOut }) {
       mounted = false;
     };
   }, [onLoggedOut]);
-
-  function handleLogout() {
-    clearToken();
-    onLoggedOut();
-  }
 
   async function handleDownload(format) {
     setDownloadError("");
@@ -575,71 +565,17 @@ function ClientDashboardAuthed({ onLoggedOut }) {
   );
 
   return (
-    <div style={{ background: COLORS.ink, minHeight: "100vh", color: COLORS.bone, fontFamily: "'Inter', -apple-system, sans-serif" }}>
+    <div style={{ background: COLORS.ink, minHeight: "100vh", color: COLORS.bone, fontFamily: "'Space Grotesk', -apple-system, sans-serif" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-        * { box-sizing: border-box; }
-        .mono { font-family: 'JetBrains Mono', monospace; }
+        .mono { font-family: 'IBM Plex Mono', monospace; }
         button { font-family: inherit; cursor: pointer; }
       `}</style>
 
-      {/* Header */}
-      <header
-        style={{
-          borderBottom: `1px solid ${COLORS.panelBorder}`,
-          padding: "16px 20px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          position: "sticky",
-          top: 0,
-          background: COLORS.ink,
-          zIndex: 10,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              border: `1.5px solid ${COLORS.gain}`,
-              borderRadius: 7,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 12,
-              fontWeight: 700,
-              color: COLORS.gain,
-            }}
-            className="mono"
-          >
-            ₿
-          </div>
-          <div style={{ fontSize: 14.5, fontWeight: 600 }}>GenesisX</div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <main style={{ maxWidth: 720, margin: "0 auto", padding: "120px 18px 60px" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
           <PriceTicker price={btcPrice} change={btcChange} status={priceStatus} />
-          <button
-            onClick={handleLogout}
-            aria-label="Log out"
-            style={{
-              background: "transparent",
-              border: `1px solid ${COLORS.panelBorder}`,
-              borderRadius: 6,
-              color: COLORS.boneDim,
-              width: 30,
-              height: 30,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <LogOut size={13} />
-          </button>
         </div>
-      </header>
 
-      <main style={{ maxWidth: 720, margin: "0 auto", padding: "28px 18px 60px" }}>
         {isNewAccount && (
           <div
             style={{
@@ -660,6 +596,8 @@ function ClientDashboardAuthed({ onLoggedOut }) {
         )}
 
         {depositSection}
+
+        <VerificationPanel />
 
         {!isNewAccount && !hasSubscription && subscriptionSection}
 
