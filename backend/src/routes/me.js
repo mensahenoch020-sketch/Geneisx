@@ -49,7 +49,8 @@ router.get("/", async (req, res) => {
 });
 
 const subscribeSchema = z.object({
-  tierMonths: z.number().int(),
+  tierKey: z.string().min(1),
+  amountUsd: z.number().positive(),
 });
 
 const updateProfileSchema = z.object({
@@ -57,17 +58,25 @@ const updateProfileSchema = z.object({
   contact: z.string().trim().max(200).optional(),
 });
 
-// POST /api/me/subscribe — client picks a tier; price is deducted from their
-// current balance immediately (no separate BTC payment — see lib/subscriptions.js
-// for why). Fails cleanly if balance is too low; never allows a negative balance.
+// POST /api/me/subscribe — client picks a tier and an exact amount within
+// that tier's [minUsd, maxUsd] range; the amount is deducted from their
+// current balance immediately (no separate BTC payment — see
+// lib/subscriptions.js for why). Fails cleanly if the amount is out of
+// range for the tier or balance is too low; never allows a negative balance.
 router.post("/subscribe", async (req, res) => {
   const parsed = subscribeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid request" });
 
-  const tier = findTier(parsed.data.tierMonths);
+  const { tierKey, amountUsd } = parsed.data;
+  const tier = findTier(tierKey);
   if (!tier) {
     return res.status(400).json({
-      error: `tierMonths must be one of: ${SUBSCRIPTION_TIERS.map((t) => t.tierMonths).join(", ")}`,
+      error: `tierKey must be one of: ${SUBSCRIPTION_TIERS.map((t) => t.key).join(", ")}`,
+    });
+  }
+  if (amountUsd < tier.minUsd || amountUsd > tier.maxUsd) {
+    return res.status(400).json({
+      error: `${tier.name} accepts amounts between $${tier.minUsd} and $${tier.maxUsd}.`,
     });
   }
 
@@ -78,9 +87,9 @@ router.post("/subscribe", async (req, res) => {
   if (!client) return res.status(404).json({ error: "Account not found" });
 
   const summary = computeClientSummary(client);
-  if (summary.balance < tier.priceUsd) {
+  if (summary.balance < amountUsd) {
     return res.status(400).json({
-      error: `Insufficient balance. This tier costs $${tier.priceUsd}, your current balance is $${summary.balance.toFixed(2)}.`,
+      error: `Insufficient balance. You chose $${amountUsd}, your current balance is $${summary.balance.toFixed(2)}.`,
     });
   }
 
@@ -90,20 +99,20 @@ router.post("/subscribe", async (req, res) => {
       data: {
         clientId: client.id,
         tierMonths: tier.tierMonths,
-        priceUsd: tier.priceUsd,
+        priceUsd: amountUsd,
         startDate: now,
         endDate: addMonths(now, tier.tierMonths),
         createdBy: "client",
       },
     });
-    // The subscription price is recorded as its own withdrawal-shaped ledger
+    // The invested amount is recorded as its own withdrawal-shaped ledger
     // entry so it shows up distinctly on statements — see statements.js, which
     // labels any withdrawal whose destination is "SUBSCRIPTION_FEE" accordingly,
     // rather than looking like a real BTC withdrawal to an external address.
     await tx.withdrawal.create({
       data: {
         clientId: client.id,
-        amountUsd: tier.priceUsd,
+        amountUsd,
         destination: SUBSCRIPTION_FEE_DESTINATION,
         status: "PROCESSED",
         requestedBy: "client",
@@ -118,7 +127,7 @@ router.post("/subscribe", async (req, res) => {
     clientId: client.id,
     action: "subscription.started",
     targetId: subscription.id,
-    detail: `${tier.tierMonths}mo tier, $${tier.priceUsd}`,
+    detail: `${tier.name} (${tier.tierMonths}mo), $${amountUsd}`,
   });
 
   res.status(201).json({ subscription });
