@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from
 import SiteNav from "./SiteNav.jsx";
 import MarketingSite from "./MarketingSite.jsx";
 import LoginScreen from "./LoginScreen.jsx";
+import WelcomePage from "./WelcomePage.jsx";
 import SettingsPage from "./SettingsPage.jsx";
 import { getToken, clearToken } from "./api.js";
 import { AccountProvider } from "./dashboard/AccountContext.jsx";
@@ -33,9 +34,9 @@ function RequireAuth({ authed, children }) {
 function AppShell({ authed, setAuthed }) {
   const navigate = useNavigate();
 
-  function handleAuthenticated() {
+  function handleAuthenticated(opts) {
     setAuthed(true);
-    navigate("/dashboard");
+    navigate(opts?.justSignedUp ? "/welcome" : "/dashboard");
   }
 
   function handleLoggedOut() {
@@ -84,6 +85,15 @@ function AppShell({ authed, setAuthed }) {
               <LoginScreen onAuthenticated={handleAuthenticated} />
             </>
           )
+        }
+      />
+
+      <Route
+        path="/welcome"
+        element={
+          <RequireAuth authed={authed}>
+            <WelcomePage />
+          </RequireAuth>
         }
       />
 

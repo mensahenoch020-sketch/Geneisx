@@ -2,7 +2,7 @@
    stylesheet for the whole client-facing site (marketing + dashboard),
    since the two used to be separate apps with separate styling. */
 
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root{
   --ink:#070A08;
@@ -238,79 +238,92 @@ footer{border-top:1px solid var(--panel-border); padding:48px 24px; font-size:12
 .footer-legal{max-width:640px; line-height:1.8;}
 
 /* ---------- Dashboard shell (sidebar layout) ---------- */
-/* This replaces the old logged-in experience, which had no sidebar at all —
-   just the thin top SiteNav plus a single centered column. That was the
-   other half of "navigation doesn't show": there was no persistent nav for
-   Portfolio/Wallet/Watchlist/etc. once inside the dashboard, only the page
-   content. */
+/* Light/white theme, separate from the dark marketing site above — the
+   dashboard is where clients spend all their time once logged in, so it
+   gets its own palette (--dash-*) and font (Inter) rather than reusing the
+   marketing site's dark tokens. */
+:root{
+  --dash-bg:#F6F8F7;
+  --dash-surface:#FFFFFF;
+  --dash-border:#E4E9E6;
+  --dash-ink:#121815;
+  --dash-dim:#68766F;
+  --dash-green:#0F9D63;
+  --dash-green-bg:#E7F7EF;
+  --dash-loss:#DC4C3F;
+  --dash-loss-bg:#FDEEEC;
+  --dash-amber:#B8790F;
+  --dash-amber-bg:#FBF1E1;
+  --dash-shadow:0 1px 2px rgba(18,24,21,0.04), 0 8px 24px rgba(18,24,21,0.05);
+}
+
 .dash-shell{
-  display:flex; min-height:100vh; background:var(--ink); color:var(--bone);
-  font-family:'Space Grotesk', -apple-system, sans-serif;
+  display:flex; min-height:100vh; background:var(--dash-bg); color:var(--dash-ink);
+  font-family:'Inter', -apple-system, sans-serif;
+  font-size:16px;
 }
 
 .dash-sidebar{
-  width:248px; flex-shrink:0;
-  background:var(--panel); border-right:1px solid var(--panel-border);
+  width:256px; flex-shrink:0;
+  background:var(--dash-surface); border-right:1px solid var(--dash-border);
   display:flex; flex-direction:column;
   position:sticky; top:0; height:100vh; overflow-y:auto;
 }
-.dash-shell.is-collapsed .dash-sidebar{ width:76px; }
+.dash-shell.is-collapsed .dash-sidebar{ width:80px; }
 
 .dash-sidebar-top{
   display:flex; align-items:center; gap:8px;
-  padding:20px 16px 16px; border-bottom:1px solid var(--panel-border);
+  padding:22px 16px 18px; border-bottom:1px solid var(--dash-border);
 }
 .dash-brand{ flex:1; min-width:0; background:none; border:none; padding:0; cursor:pointer; }
-.dash-brand-name{ font-size:15px; font-weight:700; letter-spacing:-0.2px; }
-.dash-brand-sub{ font-size:11px; color:var(--dim); margin-top:2px; }
+.dash-brand-name{ font-size:16px; font-weight:700; letter-spacing:-0.2px; color:var(--dash-ink); }
+.dash-brand-sub{ font-size:12px; color:var(--dash-dim); margin-top:2px; }
 
 .dash-icon-btn{
-  background:none; border:1px solid var(--panel-border); border-radius:7px;
-  color:var(--dim); padding:7px; display:flex; align-items:center; justify-content:center;
+  background:none; border:1px solid var(--dash-border); border-radius:8px;
+  color:var(--dash-dim); padding:7px; display:flex; align-items:center; justify-content:center;
   cursor:pointer; flex-shrink:0;
 }
-.dash-icon-btn:hover{ color:var(--bone); border-color:var(--green-dim); }
+.dash-icon-btn:hover{ color:var(--dash-ink); border-color:var(--dash-green); background:var(--dash-green-bg); }
 .dash-close-btn{ display:none; }
 
-.dash-welcome{ padding:18px 20px 4px; }
-.dash-welcome-title{ font-size:17px; font-weight:700; letter-spacing:-0.3px; }
+.dash-welcome{ padding:20px 20px 6px; }
+.dash-welcome-title{ font-size:19px; font-weight:700; letter-spacing:-0.3px; color:var(--dash-ink); }
 
 .dash-nav{ flex:1; overflow-y:auto; padding:16px 12px; }
-.dash-nav-group{ margin-bottom:20px; }
+.dash-nav-group{ margin-bottom:22px; }
 .dash-nav-group:last-child{ margin-bottom:0; }
 .dash-nav-label{
-  font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:0.6px;
+  font-size:11px; color:var(--dash-dim); text-transform:uppercase; letter-spacing:0.6px; font-weight:600;
   padding:0 10px; margin-bottom:8px;
 }
 .dash-nav-item{
   display:flex; align-items:center; gap:12px;
-  padding:10px 10px; border-radius:8px; margin-bottom:2px;
-  color:var(--dim); font-size:13.5px; font-weight:500;
+  padding:11px 12px; border-radius:9px; margin-bottom:2px;
+  color:var(--dash-dim); font-size:14.5px; font-weight:500;
   text-decoration:none; background:none; border:none; width:100%; cursor:pointer; text-align:left;
 }
-.dash-nav-item:hover{ color:var(--bone); background:rgba(255,255,255,0.03); }
-.dash-nav-item.is-active{ color:var(--bone); background:rgba(63,226,142,0.08); }
-.dash-nav-item.is-active svg{ color:var(--green); }
+.dash-nav-item:hover{ color:var(--dash-ink); background:var(--dash-bg); }
+.dash-nav-item.is-active{ color:var(--dash-green); background:var(--dash-green-bg); font-weight:600; }
+.dash-nav-item.is-active svg{ color:var(--dash-green); }
 .dash-nav-item span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .dash-nav-badge{
-  margin-left:auto; font-size:9.5px; font-weight:700; text-transform:uppercase;
-  background:rgba(63,226,142,0.15); color:var(--green); padding:2px 6px; border-radius:4px; flex-shrink:0;
+  margin-left:auto; font-size:10px; font-weight:700; text-transform:uppercase;
+  background:var(--dash-green-bg); color:var(--dash-green); padding:2px 7px; border-radius:5px; flex-shrink:0;
 }
-.dash-nav-item.dash-logout{ color:var(--loss); }
-.dash-nav-item.dash-logout:hover{ background:rgba(232,96,76,0.08); }
 
-.dash-sidebar-bottom{ padding:14px 12px; border-top:1px solid var(--panel-border); }
+.dash-sidebar-bottom{ padding:14px 12px; border-top:1px solid var(--dash-border); }
 
 /* Clearly-visible logout — a solid bordered red button rather than a row
    that reads the same as the other nav links, so it's easy to find and
    unambiguous to tap. */
 .dash-logout-btn{
   display:flex; align-items:center; justify-content:center; gap:9px;
-  width:100%; background:rgba(232,96,76,0.1); border:1px solid rgba(232,96,76,0.4);
-  color:#ff8a73; font-size:13.5px; font-weight:600;
-  padding:11px 10px; border-radius:9px; cursor:pointer;
+  width:100%; background:var(--dash-loss-bg); border:1px solid #F2BDB5;
+  color:var(--dash-loss); font-size:14.5px; font-weight:600;
+  padding:12px 10px; border-radius:10px; cursor:pointer;
 }
-.dash-logout-btn:hover{ background:rgba(232,96,76,0.18); border-color:rgba(232,96,76,0.6); }
+.dash-logout-btn:hover{ background:#FBDCD7; border-color:#EDA79D; }
 
 /* Sparkline shown inline in list rows once there's room for it. */
 @media (min-width:640px){
@@ -318,7 +331,11 @@ footer{border-top:1px solid var(--panel-border); padding:48px 24px; font-size:12
 }
 
 .dash-content{
-  flex:1; min-width:0; padding:36px 40px 80px;
+  flex:1; min-width:0; padding:40px 44px 90px;
+}
+
+.dash-sidebar .brand-mark, .dash-mobile-bar .brand-mark{
+  border-color:var(--dash-green); color:var(--dash-green);
 }
 
 .dash-mobile-bar{ display:none; }
@@ -328,22 +345,33 @@ footer{border-top:1px solid var(--panel-border); padding:48px 24px; font-size:12
   .dash-sidebar{
     position:fixed; top:0; left:0; z-index:200; width:264px;
     transform:translateX(-100%); transition:transform 0.25s ease;
+    /* 100vh on mobile browsers includes space the address bar can cover,
+       which was pushing the logout button below the visible fold until the
+       phone was rotated (landscape gave enough real estate to fit it).
+       100dvh tracks the actual visible viewport instead. */
+    height:100dvh;
+    display:flex; flex-direction:column;
   }
   .dash-sidebar.is-open{ transform:translateX(0); }
   .dash-shell.is-collapsed .dash-sidebar{ width:264px; }
   .dash-close-btn{ display:flex; }
   .dash-collapse-btn{ display:none; }
 
+  .dash-sidebar-top{ flex-shrink:0; }
+  .dash-welcome{ flex-shrink:0; }
+  .dash-nav{ flex:1 1 auto; min-height:0; overflow-y:auto; }
+  .dash-sidebar-bottom{ flex-shrink:0; }
+
   .dash-mobile-bar{
     display:flex; align-items:center; justify-content:space-between;
     position:fixed; top:0; left:0; right:0; z-index:150;
-    background:rgba(7,10,8,0.9); backdrop-filter:blur(10px);
-    border-bottom:1px solid var(--panel-border); padding:14px 16px;
+    background:rgba(255,255,255,0.92); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--dash-border); padding:14px 16px;
   }
   .dash-mobile-brand{ display:flex; align-items:center; gap:8px; font-weight:700; font-size:15px; }
 
   .dash-scrim{
-    display:block; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:190;
+    display:block; position:fixed; inset:0; background:rgba(15,20,17,0.4); z-index:190;
   }
 
   .dash-content{ padding:88px 20px 60px; }

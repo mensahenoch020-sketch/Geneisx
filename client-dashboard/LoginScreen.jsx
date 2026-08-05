@@ -105,7 +105,7 @@ export default function LoginScreen({ onAuthenticated }) {
     setLoading(true);
     try {
       await signup({ name: name.trim(), email: email.trim(), password: signupPassword });
-      onAuthenticated();
+      onAuthenticated({ justSignedUp: true });
     } catch (err) {
       setError(err.message || "Could not create account");
     } finally {

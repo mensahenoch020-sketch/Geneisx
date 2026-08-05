@@ -1,19 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ShieldCheck, Upload, Clock, CheckCircle2, XCircle } from "lucide-react";
 import { getVerificationStatus, getDocumentTypes, submitVerificationDocument, ApiError } from "./api.js";
-
-// Same palette as client-dashboard.jsx / LoginScreen.jsx, kept local since
-// COLORS isn't exported from either — see those files for the source of truth.
-const COLORS = {
-  ink: "#0E1114",
-  panel: "#161A1F",
-  panelBorder: "#262B32",
-  bone: "#E8E4DA",
-  boneDim: "#9A9689",
-  gain: "#3DDC97",
-  loss: "#E8604C",
-  signal: "#F2B84B",
-};
+import { COLORS } from "./dashboard/shared.jsx";
 
 const inputStyle = {
   width: "100%",

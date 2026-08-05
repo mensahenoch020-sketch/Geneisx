@@ -4,16 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { fetchMe, updateProfile, changePassword, ApiError } from "./api.js";
 import NotificationsPanel from "./NotificationsPanel.jsx";
 import VerificationPanel from "./VerificationPanel.jsx";
-
-const COLORS = {
-  ink: "#070A08",
-  panel: "#0E1510",
-  panelBorder: "#1C2A20",
-  bone: "#E7EFE9",
-  boneDim: "#8CA294",
-  gain: "#3FE28E",
-  loss: "#e8604c",
-};
+import { COLORS } from "./dashboard/shared.jsx";
 
 const inputStyle = {
   width: "100%",
