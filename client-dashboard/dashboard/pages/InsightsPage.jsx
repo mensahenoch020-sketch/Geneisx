@@ -1,4 +1,5 @@
 import React from "react";
+import { CalendarClock, TrendingUp, TrendingDown } from "lucide-react";
 import { useAccount, totalPnL, pnlSince, tradePnL } from "../AccountContext.jsx";
 import { COLORS, fmtUSD, PageHeader, Card, SummaryCard, EmptyState, LoadingPage, ErrorPage } from "../shared.jsx";
 
@@ -25,9 +26,9 @@ export default function InsightsPage() {
       ) : (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 24 }}>
-            <SummaryCard label="30-day P&L" value={`${pnl30 >= 0 ? "+" : ""}${fmtUSD(pnl30)}`} accent={pnl30 >= 0 ? COLORS.gain : COLORS.loss} />
-            <SummaryCard label="Avg win" value={fmtUSD(avgWin)} accent={COLORS.gain} />
-            <SummaryCard label="Avg loss" value={fmtUSD(avgLoss)} accent={COLORS.loss} />
+            <SummaryCard label="30-day P&L" value={`${pnl30 >= 0 ? "+" : ""}${fmtUSD(pnl30)}`} icon={CalendarClock} accent={pnl30 >= 0 ? COLORS.gain : COLORS.loss} />
+            <SummaryCard label="Avg win" value={fmtUSD(avgWin)} icon={TrendingUp} accent={COLORS.gain} />
+            <SummaryCard label="Avg loss" value={fmtUSD(avgLoss)} icon={TrendingDown} accent={COLORS.loss} />
           </div>
           {best && (
             <Card>

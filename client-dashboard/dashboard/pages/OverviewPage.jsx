@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { TrendingUp, TrendingDown, ShieldCheck } from "lucide-react";
-import { useAccount, useLivePrice, balance, totalDeposited, totalWithdrawn, totalPnL, pnlSince, tradePnL } from "../AccountContext.jsx";
+import { TrendingUp, TrendingDown, ShieldCheck, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { useAccount, useLivePrice, useMarketData, balance, totalDeposited, totalWithdrawn, totalPnL, pnlSince, tradePnL } from "../AccountContext.jsx";
 import { COLORS, fmtUSD, PageHeader, SummaryCard, EmptyState, LoadingPage, ErrorPage } from "../shared.jsx";
 import { buildEquityCurve, EquityChart, PriceTicker } from "../EquityChart.jsx";
+import { CoinCard } from "../CoinCard.jsx";
+import SubscriptionCard from "../SubscriptionCard.jsx";
 
 const RANGES = [
   { key: "7d", label: "1W", days: 7 },
@@ -16,6 +18,7 @@ const RANGES = [
 export default function OverviewPage() {
   const { client, loadError } = useAccount();
   const { price: btcPrice, change: btcChange, status: priceStatus } = useLivePrice("bitcoin");
+  const { coins: marketCoins, status: marketStatus } = useMarketData(["bitcoin", "ethereum", "solana"]);
   const [range, setRange] = useState("30d");
 
   const rangeDays = RANGES.find((r) => r.key === range).days;
@@ -42,6 +45,18 @@ export default function OverviewPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <PageHeader title="Dashboard" subtitle={`Welcome back${client.name ? `, ${client.name.split(" ")[0]}` : ""}.`} />
         <PriceTicker price={btcPrice} change={btcChange} status={priceStatus} />
+      </div>
+
+      <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 12 }}>
+        Live crypto updates
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 28 }}>
+        {marketStatus === "error" && <EmptyState>Couldn't load live prices right now.</EmptyState>}
+        {marketCoins && marketCoins.map((c) => <CoinCard key={c.id} coin={c} />)}
+      </div>
+
+      <div style={{ marginBottom: 28 }}>
+        <SubscriptionCard />
       </div>
 
       {isNewAccount && (
@@ -153,8 +168,8 @@ export default function OverviewPage() {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 28 }}>
-            <SummaryCard label="Total deposited" value={fmtUSD(deposited)} />
-            <SummaryCard label="Total withdrawn" value={fmtUSD(withdrawn)} />
+            <SummaryCard label="Total deposited" value={fmtUSD(deposited)} icon={ArrowDownToLine} accent="#4C9BE8" />
+            <SummaryCard label="Total withdrawn" value={fmtUSD(withdrawn)} icon={ArrowUpFromLine} accent="#E8B84C" />
           </div>
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>

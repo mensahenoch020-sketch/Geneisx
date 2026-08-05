@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet as WalletIcon, Target, Percent } from "lucide-react";
 import { useAccount, balance, totalDeposited, totalPnL, tradePnL } from "../AccountContext.jsx";
 import { COLORS, fmtUSD, PageHeader, SummaryCard, EmptyState, LoadingPage, ErrorPage } from "../shared.jsx";
 import { buildEquityCurve, EquityChart } from "../EquityChart.jsx";
@@ -45,10 +45,10 @@ export default function PortfolioPage() {
       <PageHeader title="Portfolio" subtitle="Full performance breakdown across your trading history." />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 24 }}>
-        <SummaryCard label="Balance" value={fmtUSD(bal)} />
-        <SummaryCard label="All-time P&L" value={`${pnl >= 0 ? "+" : ""}${fmtUSD(pnl)}`} accent={pnl >= 0 ? COLORS.gain : COLORS.loss} />
-        <SummaryCard label="Return" value={`${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}%`} accent={pnlPct >= 0 ? COLORS.gain : COLORS.loss} />
-        <SummaryCard label="Win rate" value={`${winRate.toFixed(0)}%`} />
+        <SummaryCard label="Balance" value={fmtUSD(bal)} icon={WalletIcon} accent={COLORS.gain} />
+        <SummaryCard label="All-time P&L" value={`${pnl >= 0 ? "+" : ""}${fmtUSD(pnl)}`} icon={pnl >= 0 ? TrendingUp : TrendingDown} accent={pnl >= 0 ? COLORS.gain : COLORS.loss} />
+        <SummaryCard label="Return" value={`${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}%`} icon={Percent} accent={pnlPct >= 0 ? COLORS.gain : COLORS.loss} />
+        <SummaryCard label="Win rate" value={`${winRate.toFixed(0)}%`} icon={Target} accent="#8C8CFF" />
       </div>
 
       <div style={{ display: "flex", gap: 4, marginBottom: 14, flexWrap: "wrap" }}>
