@@ -1174,7 +1174,7 @@ function ClientPanel({ client, onAddTrade, onAddDeposit, onAddWithdrawal, onMark
                   padding: "3px 8px",
                 }}
               >
-                Subscribed · {client.activeSubscription.tierMonths}mo · ends{" "}
+                Subscribed · ${Number(client.activeSubscription.priceUsd).toLocaleString()} · {client.activeSubscription.tierMonths}mo · ends{" "}
                 {new Date(client.activeSubscription.endDate).toLocaleDateString()}
               </span>
             ) : (
