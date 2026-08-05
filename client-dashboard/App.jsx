@@ -11,7 +11,6 @@ import OverviewPage from "./dashboard/pages/OverviewPage.jsx";
 import PortfolioPage from "./dashboard/pages/PortfolioPage.jsx";
 import WalletPage from "./dashboard/pages/WalletPage.jsx";
 import WatchlistPage from "./dashboard/pages/WatchlistPage.jsx";
-import TradePage from "./dashboard/pages/TradePage.jsx";
 import TransactionsPage from "./dashboard/pages/TransactionsPage.jsx";
 import InsightsPage from "./dashboard/pages/InsightsPage.jsx";
 import AnalyticsPage from "./dashboard/pages/AnalyticsPage.jsx";
@@ -99,7 +98,6 @@ function AppShell({ authed, setAuthed }) {
                   <Route path="portfolio" element={<PortfolioPage />} />
                   <Route path="wallet" element={<WalletPage />} />
                   <Route path="watchlist" element={<WatchlistPage />} />
-                  <Route path="trade" element={<TradePage />} />
                   <Route path="transactions" element={<TransactionsPage />} />
                   <Route path="insights" element={<InsightsPage />} />
                   <Route path="analytics" element={<AnalyticsPage />} />

@@ -299,7 +299,23 @@ footer{border-top:1px solid var(--panel-border); padding:48px 24px; font-size:12
 .dash-nav-item.dash-logout{ color:var(--loss); }
 .dash-nav-item.dash-logout:hover{ background:rgba(232,96,76,0.08); }
 
-.dash-sidebar-bottom{ padding:12px; border-top:1px solid var(--panel-border); }
+.dash-sidebar-bottom{ padding:14px 12px; border-top:1px solid var(--panel-border); }
+
+/* Clearly-visible logout — a solid bordered red button rather than a row
+   that reads the same as the other nav links, so it's easy to find and
+   unambiguous to tap. */
+.dash-logout-btn{
+  display:flex; align-items:center; justify-content:center; gap:9px;
+  width:100%; background:rgba(232,96,76,0.1); border:1px solid rgba(232,96,76,0.4);
+  color:#ff8a73; font-size:13.5px; font-weight:600;
+  padding:11px 10px; border-radius:9px; cursor:pointer;
+}
+.dash-logout-btn:hover{ background:rgba(232,96,76,0.18); border-color:rgba(232,96,76,0.6); }
+
+/* Sparkline shown inline in list rows once there's room for it. */
+@media (min-width:640px){
+  .coin-row-spark{ display:block !important; }
+}
 
 .dash-content{
   flex:1; min-width:0; padding:36px 40px 80px;

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { fetchMe, updateProfile, changePassword, ApiError } from "./api.js";
 import NotificationsPanel from "./NotificationsPanel.jsx";
+import VerificationPanel from "./VerificationPanel.jsx";
 
 const COLORS = {
   ink: "#070A08",
@@ -209,6 +210,7 @@ export default function SettingsPage() {
       <div style={{ fontSize: 24, fontWeight: 700, marginBottom: 24 }}>Settings</div>
       <ProfileSection />
       <PasswordSection />
+      <VerificationPanel />
       <NotificationsPanel />
     </div>
   );
