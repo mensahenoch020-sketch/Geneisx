@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { TrendingUp, TrendingDown, ShieldCheck, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { TrendingUp, TrendingDown, ShieldCheck, ArrowDownToLine, ArrowUpFromLine, Sparkles } from "lucide-react";
 import { useAccount, useLivePrice, useMarketData, balance, totalDeposited, totalWithdrawn, totalPnL, pnlSince, tradePnL } from "../AccountContext.jsx";
 import { COLORS, fmtUSD, PageHeader, SummaryCard, EmptyState, LoadingPage, ErrorPage } from "../shared.jsx";
 import { buildEquityCurve, EquityChart, PriceTicker } from "../EquityChart.jsx";
 import { CoinCard } from "../CoinCard.jsx";
 import SubscriptionCard from "../SubscriptionCard.jsx";
+import OnboardingTracker from "../OnboardingTracker.jsx";
 
 const RANGES = [
   { key: "7d", label: "1W", days: 7 },
@@ -14,6 +15,13 @@ const RANGES = [
   { key: "180d", label: "6M", days: 180 },
   { key: "365d", label: "1Y", days: 365 },
 ];
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
 
 export default function OverviewPage() {
   const { client, loadError } = useAccount();
@@ -43,16 +51,18 @@ export default function OverviewPage() {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
-        <PageHeader title="Dashboard" subtitle={`Welcome back${client.name ? `, ${client.name.split(" ")[0]}` : ""}.`} />
+        <PageHeader title="Dashboard" subtitle={`${greeting()}${client.name ? `, ${client.name.split(" ")[0]}` : ""} 👋`} />
         <PriceTicker price={btcPrice} change={btcChange} status={priceStatus} />
       </div>
+
+      <OnboardingTracker />
 
       <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 12 }}>
         Live crypto updates
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 28 }}>
         {marketStatus === "error" && <EmptyState>Couldn't load live prices right now.</EmptyState>}
-        {marketCoins && marketCoins.map((c) => <CoinCard key={c.id} coin={c} />)}
+        {marketCoins && marketCoins.map((c) => <CoinCard key={c.id} coin={c} stale={marketStatus === "stale"} />)}
       </div>
 
       <div style={{ marginBottom: 28 }}>
@@ -62,21 +72,24 @@ export default function OverviewPage() {
       {isNewAccount && (
         <div
           style={{
-            background: "rgba(63,226,142,0.06)",
-            border: `1px solid rgba(63,226,142,0.25)`,
+            background: COLORS.gainBg,
+            border: `1px solid #B9E8D2`,
             borderRadius: 12,
             padding: 18,
             marginBottom: 28,
           }}
         >
-          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Welcome — one step to get started</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <Sparkles size={16} color={COLORS.gain} />
+            <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.bone }}>Welcome — one step to get started</span>
+          </div>
           <div style={{ fontSize: 13, color: COLORS.boneDim, lineHeight: 1.6, marginBottom: 12 }}>
             Your account is ready, but there's nothing in it yet. Head to Wallet for your deposit address, then let
             us know so we can match it to your account.
           </div>
           <Link
             to="/dashboard/wallet"
-            style={{ display: "inline-block", background: COLORS.gain, color: COLORS.ink, fontWeight: 600, fontSize: 13, padding: "9px 16px", borderRadius: 8 }}
+            style={{ display: "inline-block", background: COLORS.gain, color: "#FFFFFF", fontWeight: 700, fontSize: 13, padding: "10px 18px", borderRadius: 8 }}
           >
             Go to Wallet
           </Link>
@@ -150,7 +163,7 @@ export default function OverviewPage() {
               display: "flex",
               alignItems: "flex-start",
               gap: 10,
-              background: "rgba(255,255,255,0.03)",
+              background: COLORS.page,
               border: `1px solid ${COLORS.panelBorder}`,
               borderRadius: 10,
               padding: 14,
@@ -195,6 +208,7 @@ export default function OverviewPage() {
                       alignItems: "center",
                       background: COLORS.panel,
                       border: `1px solid ${COLORS.panelBorder}`,
+                      borderLeft: `3px solid ${p >= 0 ? COLORS.gain : COLORS.loss}`,
                       borderRadius: 8,
                       padding: "10px 14px",
                     }}
@@ -205,7 +219,7 @@ export default function OverviewPage() {
                           width: 26,
                           height: 26,
                           borderRadius: 6,
-                          background: p >= 0 ? "rgba(63,226,142,0.12)" : "rgba(232,96,76,0.12)",
+                          background: p >= 0 ? COLORS.gainBg : COLORS.lossBg,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",

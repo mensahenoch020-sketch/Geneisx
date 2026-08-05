@@ -92,7 +92,7 @@ export default function TransactionsPage() {
                       height: 26,
                       borderRadius: 6,
                       flexShrink: 0,
-                      background: positive ? "rgba(63,226,142,0.12)" : "rgba(232,96,76,0.12)",
+                      background: positive ? COLORS.gainBg : COLORS.lossBg,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",

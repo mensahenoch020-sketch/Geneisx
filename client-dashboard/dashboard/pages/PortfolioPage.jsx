@@ -134,7 +134,7 @@ export default function PortfolioPage() {
                       width: 26,
                       height: 26,
                       borderRadius: 6,
-                      background: p >= 0 ? "rgba(63,220,142,0.12)" : "rgba(232,96,76,0.12)",
+                      background: p >= 0 ? COLORS.gainBg : COLORS.lossBg,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",

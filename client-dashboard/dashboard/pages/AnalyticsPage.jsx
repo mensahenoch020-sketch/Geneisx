@@ -26,7 +26,7 @@ export default function AnalyticsPage() {
         <PageHeader title="Analytics" />
         <span
           style={{
-            background: "rgba(63,226,142,0.12)",
+            background: COLORS.gainBg,
             color: COLORS.gain,
             fontSize: 11,
             fontWeight: 600,
