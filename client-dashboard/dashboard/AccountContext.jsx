@@ -111,6 +111,44 @@ export function useLivePrice(symbol = "bitcoin") {
   return { price, change, status };
 }
 
+// Real per-coin logos + real 7-day sparkline price arrays, straight from
+// CoinGecko's /coins/markets endpoint — used anywhere we show a coin's icon
+// or a mini price chart, so nothing on those cards is fabricated.
+const DEFAULT_WATCHLIST = ["bitcoin", "ethereum", "solana", "tether", "litecoin", "ripple"];
+
+export function useMarketData(ids = DEFAULT_WATCHLIST) {
+  const [coins, setCoins] = useState(null);
+  const [status, setStatus] = useState("loading");
+  const idsKey = ids.join(",");
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const res = await fetch(
+          `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${idsKey}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`
+        );
+        if (!res.ok) throw new Error("bad response");
+        const data = await res.json();
+        if (mounted) {
+          setCoins(data);
+          setStatus("live");
+        }
+      } catch (e) {
+        if (mounted) setStatus("error");
+      }
+    }
+    load();
+    const interval = setInterval(load, 45000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [idsKey]);
+
+  return { coins, status };
+}
+
 export function AccountProvider({ onLoggedOut, children }) {
   const [client, setClient] = useState(null);
   const [loadError, setLoadError] = useState("");

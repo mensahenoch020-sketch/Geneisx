@@ -5,7 +5,6 @@ import {
   SlidersHorizontal,
   Wallet as WalletIcon,
   Pin,
-  Repeat2,
   ArrowLeftRight,
   LineChart,
   BarChart3,
@@ -34,10 +33,7 @@ const NAV_GROUPS = [
   },
   {
     label: "Activity",
-    items: [
-      { to: "/dashboard/trade", icon: Repeat2, label: "Trade" },
-      { to: "/dashboard/transactions", icon: ArrowLeftRight, label: "Transactions" },
-    ],
+    items: [{ to: "/dashboard/transactions", icon: ArrowLeftRight, label: "Transactions" }],
   },
   {
     label: "Insights",
@@ -96,7 +92,7 @@ export default function DashboardShell({ onLoggedOut, children }) {
             {!collapsed && (
               <div>
                 <div className="dash-brand-name">GenesisX</div>
-                <div className="dash-brand-sub">AI-Powered Trading</div>
+                <div className="dash-brand-sub">Actively Managed Bitcoin</div>
               </div>
             )}
           </button>
@@ -141,8 +137,14 @@ export default function DashboardShell({ onLoggedOut, children }) {
         </nav>
 
         <div className="dash-sidebar-bottom">
-          <button className="dash-nav-item dash-logout" onClick={onLoggedOut}>
-            <LogOut size={17} strokeWidth={1.8} />
+          <button
+            className="dash-logout-btn"
+            onClick={() => {
+              if (window.confirm("Log out of GenesisX?")) onLoggedOut();
+            }}
+            title={collapsed ? "Log out" : undefined}
+          >
+            <LogOut size={17} strokeWidth={2} />
             {!collapsed && <span>Log out</span>}
           </button>
         </div>

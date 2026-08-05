@@ -64,25 +64,48 @@ export function EquityChart({ data }) {
   const points = data.map((d) => {
     const x = padding + ((d.t - tMin) / tRange) * (width - padding * 2);
     const y = padding + (1 - (d.v - min) / range) * (height - padding * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
+    return { x, y };
   });
+  const pointsStr = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const last = points[points.length - 1];
 
   const isUp = values[values.length - 1] >= values[0];
   const lineColor = isUp ? COLORS.gain : COLORS.loss;
-  const areaPoints = `${padding},${height - padding} ${points.join(" ")} ${width - padding},${height - padding}`;
+  const areaPoints = `${padding},${height - padding} ${pointsStr} ${width - padding},${height - padding}`;
+
+  // Faint horizontal gridlines at 25/50/75% — purely visual scaffolding
+  // (not derived data), same as the reference screenshot's chart grid.
+  const gridLines = [0.25, 0.5, 0.75].map((f) => padding + f * (height - padding * 2));
 
   return (
-    <div style={{ border: `1px solid ${COLORS.panelBorder}`, borderRadius: 10, background: COLORS.panel, padding: "16px 8px" }}>
+    <div style={{ border: `1px solid ${COLORS.panelBorder}`, borderRadius: 12, background: COLORS.panel, padding: "18px 8px 10px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "0 12px 10px", fontSize: 11, color: COLORS.boneDim }}>
+        <span>{fmtUSD(max, { maximumFractionDigits: 0 })}</span>
+        <span>{fmtUSD(min, { maximumFractionDigits: 0 })}</span>
+      </div>
       <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: "auto", display: "block" }}>
         <defs>
           <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={lineColor} stopOpacity="0.25" />
+            <stop offset="0%" stopColor={lineColor} stopOpacity="0.3" />
             <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
           </linearGradient>
         </defs>
+        {gridLines.map((y, i) => (
+          <line key={i} x1={padding} x2={width - padding} y1={y} y2={y} stroke={COLORS.panelBorder} strokeWidth="1" />
+        ))}
         <polygon points={areaPoints} fill="url(#areaFill)" />
-        <polyline points={points.join(" ")} fill="none" stroke={lineColor} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <polyline points={pointsStr} fill="none" stroke={lineColor} strokeWidth="2.25" strokeLinejoin="round" strokeLinecap="round" />
+        {last && (
+          <>
+            <circle cx={last.x} cy={last.y} r="5" fill={COLORS.ink} stroke={lineColor} strokeWidth="2.5" />
+            <circle cx={last.x} cy={last.y} r="2" fill={lineColor} />
+          </>
+        )}
       </svg>
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 12px 0", fontSize: 10.5, color: COLORS.boneDim }}>
+        <span>{new Date(tMin).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+        <span>{new Date(tMax).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+      </div>
     </div>
   );
 }

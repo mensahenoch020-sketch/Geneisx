@@ -39,11 +39,30 @@ export function Card({ children, style }) {
   );
 }
 
-export function SummaryCard({ label, value, accent }) {
+export function SummaryCard({ label, value, accent, icon: Icon }) {
+  const barColor = accent || COLORS.gain;
   return (
-    <Card style={{ padding: "16px 18px" }}>
-      <div style={{ fontSize: 10.5, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
-        {label}
+    <Card style={{ padding: "16px 18px", borderLeft: `3px solid ${barColor}`, position: "relative" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ fontSize: 10.5, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.5 }}>
+          {label}
+        </div>
+        {Icon && (
+          <div
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 7,
+              background: `${barColor}1f`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Icon size={13} color={barColor} />
+          </div>
+        )}
       </div>
       <div className="mono" style={{ fontSize: 19, fontWeight: 600, color: accent || COLORS.bone }}>
         {value}
