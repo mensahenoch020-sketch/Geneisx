@@ -78,8 +78,8 @@ export async function signup({ name, email, password, contact }) {
   return data;
 }
 
-export async function subscribe(tierMonths) {
-  return request("/api/me/subscribe", { method: "POST", body: { tierMonths } });
+export async function subscribe(tierKey, amountUsd) {
+  return request("/api/me/subscribe", { method: "POST", body: { tierKey, amountUsd } });
 }
 
 export async function changePassword(currentPassword, newPassword) {
