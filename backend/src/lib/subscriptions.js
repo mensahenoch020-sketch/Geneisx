@@ -1,21 +1,25 @@
-// Subscription tiers: a client-chosen lock-up commitment, paid out of their
-// existing account balance. See prisma/schema.prisma "Subscription" model for
-// the enforcement rules (blocks withdrawal while active, blocks new trades
-// once expired).
+// Subscription tiers: a client-chosen investment amount within a named
+// tier's range, locked up for that tier's fixed duration. The amount they
+// choose (anywhere in [minUsd, maxUsd]) is deducted from their balance —
+// see prisma/schema.prisma "Subscription" model for the enforcement rules
+// (blocks withdrawal while active, blocks new trades once expired). It's
+// stored in the same `priceUsd` column as before; only the meaning changed
+// (client-chosen investment amount, not a fixed activation fee), so no
+// migration was needed.
 //
-// EDIT THESE PRICES — they're placeholders. Change tierMonths/priceUsd here
-// and both the client dashboard and admin tool will reflect the new values
-// automatically; nothing else needs to change.
+// EDIT THESE — they're your real tier config. Change name/tierMonths/minUsd/
+// maxUsd here and both the client dashboard and admin tool reflect the new
+// values automatically; nothing else needs to change.
 const SUBSCRIPTION_TIERS = [
-  { tierMonths: 1, priceUsd: 49, description: "Try it out before committing to a longer lock-up." },
-  { tierMonths: 3, priceUsd: 129, description: "A modest commitment with a lower monthly cost than going month-to-month." },
-  { tierMonths: 6, priceUsd: 229, description: "Half a year in — monthly cost drops further." },
-  { tierMonths: 9, priceUsd: 319, description: "For clients settling in for the longer haul." },
-  { tierMonths: 12, priceUsd: 399, description: "Our lowest monthly cost, for clients committing for a full year." },
+  { key: "starter", name: "Starter", tierMonths: 1, minUsd: 500, maxUsd: 1000, description: "Try it out before committing to a longer lock-up." },
+  { key: "growth", name: "Growth", tierMonths: 3, minUsd: 1000, maxUsd: 5000, description: "A modest commitment with more room to grow." },
+  { key: "pro", name: "Pro", tierMonths: 6, minUsd: 10000, maxUsd: 25000, description: "Half a year in, for clients scaling up their position." },
+  { key: "premium", name: "Premium", tierMonths: 9, minUsd: 30000, maxUsd: 50000, description: "For clients settling in for the longer haul." },
+  { key: "elite", name: "Elite", tierMonths: 12, minUsd: 70000, maxUsd: 150000, description: "Our largest tier, for a full year commitment." },
 ];
 
-function findTier(tierMonths) {
-  return SUBSCRIPTION_TIERS.find((t) => t.tierMonths === Number(tierMonths));
+function findTier(key) {
+  return SUBSCRIPTION_TIERS.find((t) => t.key === key);
 }
 
 function addMonths(date, months) {
