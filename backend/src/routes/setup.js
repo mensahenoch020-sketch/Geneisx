@@ -132,10 +132,22 @@ router.get("/totp-start", setupLimiter, async (req, res) => {
   res.send(`
     <html>
       <body style="font-family: sans-serif; max-width: 600px; margin: 40px auto; line-height: 1.6; text-align: center;">
-        <h2>Scan this with your authenticator app</h2>
-        <p>Google Authenticator, Authy, or any TOTP app will work.</p>
+        <h2>Set up 2FA</h2>
+        <p><strong>Option A — scan this</strong> with your authenticator app's camera (Google
+        Authenticator, Authy, or any TOTP app):</p>
         <img src="${qr}" alt="2FA QR code" style="max-width: 260px;" />
-        <p style="margin-top: 24px;">Once you've scanned it, enter the 6-digit code it shows you:</p>
+
+        <p style="margin-top: 32px;"><strong>Option B — enter this manually</strong> instead, if your
+        app can't scan from a photo. In your authenticator app, choose "Enter a setup key" or "Enter code
+        manually" and type this in exactly (spaces don't matter, but the letters/numbers do):</p>
+        <div style="font-family: monospace; font-size: 20px; letter-spacing: 2px; background: #f0f0f0; padding: 16px; border-radius: 8px; word-break: break-all;">
+          ${totpSecret}
+        </div>
+        <p style="font-size: 13px; color: #666;">
+          Account name: GenesisX (${user.email})<br/>Type: Time-based (TOTP)
+        </p>
+
+        <p style="margin-top: 32px;">Once it's added, enter the 6-digit code your app shows you:</p>
         <form action="/setup/totp-confirm" method="get" style="display: flex; flex-direction: column; gap: 10px; align-items: center;">
           <input type="hidden" name="secret" value="${configuredSecret}" />
           <input type="hidden" name="email" value="${user.email}" />
