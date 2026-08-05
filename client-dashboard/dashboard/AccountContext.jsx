@@ -25,7 +25,7 @@ function normalizeClient(apiClient) {
     activeSubscription: apiClient.activeSubscription
       ? {
           tierMonths: apiClient.activeSubscription.tierMonths,
-          priceUsd: Number(apiClient.activeSubscription.priceUsd),
+          amountUsd: Number(apiClient.activeSubscription.priceUsd),
           startDate: apiClient.activeSubscription.startDate,
           endDate: apiClient.activeSubscription.endDate,
         }
@@ -114,39 +114,84 @@ export function useLivePrice(symbol = "bitcoin") {
 // Real per-coin logos + real 7-day sparkline price arrays, straight from
 // CoinGecko's /coins/markets endpoint — used anywhere we show a coin's icon
 // or a mini price chart, so nothing on those cards is fabricated.
+//
+// CoinGecko's free public API is rate-limited, and previously every page
+// that called useMarketData ran its own independent fetch + 45s timer —
+// stacking several pollers at once (Dashboard + Watchlist + Market Trends)
+// was enough to trip the rate limit and show "couldn't load" even though
+// the network was fine. This now shares one in-memory cache per coin-list
+// across the whole app: only one fetch is in flight for a given list of
+// ids at a time, all callers subscribe to the same result, and the last
+// successful prices stay on screen (marked "delayed") instead of being
+// replaced by an error the moment one poll fails.
+const marketCache = new Map(); // idsKey -> { coins, subscribers:Set, timer }
+const MARKET_POLL_MS = 60000;
 const DEFAULT_WATCHLIST = ["bitcoin", "ethereum", "solana", "tether", "litecoin", "ripple"];
 
+function getMarketEntry(idsKey) {
+  let entry = marketCache.get(idsKey);
+  if (!entry) {
+    entry = { coins: null, subscribers: new Set(), timer: null, inFlight: false };
+    marketCache.set(idsKey, entry);
+  }
+  return entry;
+}
+
+async function pollMarket(idsKey, ids) {
+  const entry = getMarketEntry(idsKey);
+  if (entry.inFlight) return;
+  entry.inFlight = true;
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${idsKey}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`
+    );
+    if (!res.ok) throw new Error("bad response");
+    const data = await res.json();
+    entry.coins = data;
+    entry.lastFetchedAt = Date.now();
+    entry.subscribers.forEach((cb) => cb({ coins: data, status: "live" }));
+  } catch (e) {
+    // Keep whatever we last had — subscribers get "stale" (if we have old
+    // data to show) or "error" (if we've never had a successful fetch).
+    entry.subscribers.forEach((cb) => cb({ coins: entry.coins, status: entry.coins ? "stale" : "error" }));
+  } finally {
+    entry.inFlight = false;
+  }
+}
+
 export function useMarketData(ids = DEFAULT_WATCHLIST) {
-  const [coins, setCoins] = useState(null);
-  const [status, setStatus] = useState("loading");
   const idsKey = ids.join(",");
+  const [state, setState] = useState(() => {
+    const entry = getMarketEntry(idsKey);
+    return { coins: entry.coins, status: entry.coins ? "stale" : "loading" };
+  });
 
   useEffect(() => {
-    let mounted = true;
-    async function load() {
-      try {
-        const res = await fetch(
-          `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${idsKey}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`
-        );
-        if (!res.ok) throw new Error("bad response");
-        const data = await res.json();
-        if (mounted) {
-          setCoins(data);
-          setStatus("live");
-        }
-      } catch (e) {
-        if (mounted) setStatus("error");
-      }
+    const entry = getMarketEntry(idsKey);
+    const onUpdate = (next) => setState(next);
+    entry.subscribers.add(onUpdate);
+
+    // First subscriber for this coin list kicks off polling; later
+    // subscribers just ride the existing timer instead of starting a
+    // second one.
+    if (!entry.timer) {
+      pollMarket(idsKey, ids);
+      entry.timer = setInterval(() => pollMarket(idsKey, ids), MARKET_POLL_MS);
+    } else if (entry.coins) {
+      setState({ coins: entry.coins, status: "stale" });
     }
-    load();
-    const interval = setInterval(load, 45000);
+
     return () => {
-      mounted = false;
-      clearInterval(interval);
+      entry.subscribers.delete(onUpdate);
+      if (entry.subscribers.size === 0 && entry.timer) {
+        clearInterval(entry.timer);
+        entry.timer = null;
+      }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsKey]);
 
-  return { coins, status };
+  return state;
 }
 
 export function AccountProvider({ onLoggedOut, children }) {
@@ -183,9 +228,9 @@ export function AccountProvider({ onLoggedOut, children }) {
     return downloadStatement(format);
   }
 
-  async function handleSubscribe(tierMonths) {
+  async function handleSubscribe(tierKey, amountUsd) {
     try {
-      await subscribe(tierMonths);
+      await subscribe(tierKey, amountUsd);
       await reload();
       return { ok: true };
     } catch (err) {
