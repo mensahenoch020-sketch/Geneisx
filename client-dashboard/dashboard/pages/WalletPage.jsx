@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import QRCode from "react-qr-code";
-import { Download } from "lucide-react";
+import { Download, Wallet as WalletIcon, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { useAccount, balance, totalDeposited, totalWithdrawn } from "../AccountContext.jsx";
 import { COLORS, fmtUSD, PageHeader, Card, CopyField, SummaryCard, LoadingPage, ErrorPage } from "../shared.jsx";
 
@@ -52,9 +52,9 @@ export default function WalletPage() {
       <PageHeader title="Wallet" subtitle="Your deposit address, balances, and statements." />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 28 }}>
-        <SummaryCard label="Balance" value={fmtUSD(bal)} />
-        <SummaryCard label="Total deposited" value={fmtUSD(deposited)} />
-        <SummaryCard label="Total withdrawn" value={fmtUSD(withdrawn)} />
+        <SummaryCard label="Balance" value={fmtUSD(bal)} icon={WalletIcon} accent={COLORS.gain} />
+        <SummaryCard label="Total deposited" value={fmtUSD(deposited)} icon={ArrowDownToLine} accent="#4C9BE8" />
+        <SummaryCard label="Total withdrawn" value={fmtUSD(withdrawn)} icon={ArrowUpFromLine} accent="#E8B84C" />
       </div>
 
       <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 12 }}>
