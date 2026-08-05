@@ -15,6 +15,7 @@ const reconciliationRoutes = require("./routes/reconciliation");
 const meRoutes = require("./routes/me");
 const { staffRouter: statementsStaffRoutes, selfRouter: statementsSelfRoutes } = require("./routes/statements");
 const { staffRouter: verificationStaffRoutes, selfRouter: verificationSelfRoutes } = require("./routes/verification");
+const setupRoutes = require("./routes/setup"); // TEMPORARY — see backend/src/routes/setup.js for removal instructions
 
 const app = express();
 
@@ -52,6 +53,7 @@ app.get("/health", (req, res) => res.json({ ok: true }));
 
 app.use("/auth/staff", authStaffRoutes);
 app.use("/auth/client", authClientRoutes);
+app.use("/setup", setupRoutes); // TEMPORARY — remove once you've created your Owner account, see setup.js
 
 // Staff-facing (admin tool)
 app.use("/api/clients", clientsRoutes);
