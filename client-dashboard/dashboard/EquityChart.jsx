@@ -78,8 +78,8 @@ export function EquityChart({ data }) {
   const gridLines = [0.25, 0.5, 0.75].map((f) => padding + f * (height - padding * 2));
 
   return (
-    <div style={{ border: `1px solid ${COLORS.panelBorder}`, borderRadius: 12, background: COLORS.panel, padding: "18px 8px 10px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", padding: "0 12px 10px", fontSize: 11, color: COLORS.boneDim }}>
+    <div style={{ border: `1px solid ${COLORS.panelBorder}`, borderRadius: 14, background: COLORS.panel, padding: "20px 10px 12px", boxShadow: "0 1px 2px rgba(18,24,21,0.04), 0 8px 24px rgba(18,24,21,0.05)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "0 14px 12px", fontSize: 12.5, color: COLORS.boneDim, fontWeight: 500 }}>
         <span>{fmtUSD(max, { maximumFractionDigits: 0 })}</span>
         <span>{fmtUSD(min, { maximumFractionDigits: 0 })}</span>
       </div>

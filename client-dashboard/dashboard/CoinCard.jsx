@@ -1,6 +1,6 @@
 import React from "react";
-import { TrendingUp, TrendingDown } from "lucide-react";
-import { COLORS } from "./shared.jsx";
+import { TrendingUp, TrendingDown, Clock } from "lucide-react";
+import { COLORS, Badge } from "./shared.jsx";
 
 // Per-coin accent so cards read as distinct/colorful instead of every card
 // being the same green-on-black panel — colors approximate each coin's real
@@ -95,8 +95,11 @@ export function CoinLogo({ coin, size = 34 }) {
 }
 
 // Full card version — logo, real price, real 24h %, real sparkline. Used on
-// the Dashboard's "Live Crypto Updates" row and the Watchlist grid.
-export function CoinCard({ coin }) {
+// the Dashboard's "Live Crypto Updates" row and the Watchlist grid. Pass
+// `stale` when this card is showing the last-known prices because the most
+// recent poll failed — keeps the numbers visible instead of hiding them
+// behind an error, with a small badge so it's clear they may be a bit old.
+export function CoinCard({ coin, stale }) {
   const accent = accentFor(coin.id);
   const up = (coin.price_change_percentage_24h ?? 0) >= 0;
   const sparkline = coin.sparkline_in_7d?.price;
@@ -104,25 +107,31 @@ export function CoinCard({ coin }) {
   return (
     <div
       style={{
-        background: `linear-gradient(160deg, ${accent}14, ${COLORS.panel})`,
-        border: `1px solid ${accent}33`,
-        borderRadius: 14,
-        padding: 18,
+        background: `linear-gradient(160deg, ${accent}10, ${COLORS.panel})`,
+        border: `1px solid ${accent}40`,
+        borderRadius: 16,
+        padding: 20,
         minWidth: 220,
         flex: "1 1 220px",
+        boxShadow: "0 1px 2px rgba(18,24,21,0.04), 0 8px 20px rgba(18,24,21,0.05)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <CoinLogo coin={coin} />
           <div>
-            <div style={{ fontSize: 13.5, fontWeight: 700 }}>{coin.symbol?.toUpperCase()}/USDT</div>
-            <div style={{ fontSize: 11, color: COLORS.boneDim }}>{coin.name}</div>
+            <div style={{ fontSize: 14.5, fontWeight: 700 }}>{coin.symbol?.toUpperCase()}/USDT</div>
+            <div style={{ fontSize: 12, color: COLORS.boneDim }}>{coin.name}</div>
           </div>
         </div>
+        {stale && (
+          <Badge tone="signal">
+            <Clock size={10} /> Delayed
+          </Badge>
+        )}
       </div>
 
-      <div className="mono" style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.5, marginBottom: 4 }}>
+      <div className="mono" style={{ fontSize: 24, fontWeight: 700, letterSpacing: -0.5, marginBottom: 6 }}>
         {coin.current_price?.toLocaleString("en-US", { style: "currency", currency: "USD" })}
       </div>
       <div
@@ -131,13 +140,13 @@ export function CoinCard({ coin }) {
           display: "inline-flex",
           alignItems: "center",
           gap: 4,
-          fontSize: 12,
+          fontSize: 12.5,
           fontWeight: 600,
           color: up ? COLORS.gain : COLORS.loss,
-          background: up ? "rgba(63,226,142,0.12)" : "rgba(232,96,76,0.12)",
-          borderRadius: 6,
-          padding: "3px 8px",
-          marginBottom: 10,
+          background: up ? COLORS.gainBg : COLORS.lossBg,
+          borderRadius: 7,
+          padding: "3px 9px",
+          marginBottom: 12,
         }}
       >
         {up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
