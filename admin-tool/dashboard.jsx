@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight, X, ChevronRight, Activity, Clock, Check, ArrowDown, ArrowUp, Scale, AlertTriangle, ShieldCheck, Download, LogOut } from "lucide-react";
+import { Plus, TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight, X, ChevronRight, Activity, Clock, Check, ArrowDown, ArrowUp, Scale, AlertTriangle, ShieldCheck, Download, LogOut, MessageCircle, Send } from "lucide-react";
 import StaffLoginScreen from "./StaffLoginScreen.jsx";
 import {
   getToken,
@@ -20,6 +20,9 @@ import {
   runReconciliationCheck,
   getReconciliationHistory,
   downloadClientStatement,
+  getConversations,
+  getConversationThread,
+  sendStaffMessage,
   ApiError,
 } from "./api.js";
 
@@ -174,6 +177,8 @@ function AdminDashboardAuthed({ onLoggedOut }) {
   const [revenue, setRevenue] = useState(null);
   const [verificationQueue, setVerificationQueue] = useState([]);
   const [verificationQueueCount, setVerificationQueueCount] = useState(0);
+  const [conversations, setConversations] = useState([]);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
 
   const selected = clients.find((c) => c.id === selectedId) || null;
 
@@ -234,6 +239,16 @@ function AdminDashboardAuthed({ onLoggedOut }) {
     }
   }
 
+  async function reloadConversations() {
+    try {
+      const data = await getConversations();
+      setConversations(data.conversations);
+      setUnreadMessagesCount(data.conversations.reduce((sum, c) => sum + c.unreadCount, 0));
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not load messages");
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
     async function init() {
@@ -241,6 +256,7 @@ function AdminDashboardAuthed({ onLoggedOut }) {
       await reloadClientList();
       await reloadRevenue();
       await reloadVerificationQueue(); // loaded up front so the nav badge count shows before switching tabs
+      await reloadConversations(); // same reasoning — badge count needs to be ready before switching tabs
       if (mounted) setLoadingClients(false);
     }
     init();
@@ -253,8 +269,19 @@ function AdminDashboardAuthed({ onLoggedOut }) {
   useEffect(() => {
     if (view === "reconciliation") reloadReconciliation();
     if (view === "verification") reloadVerificationQueue();
+    if (view === "messages") reloadConversations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
+
+  // Keeps the unread-messages nav badge current even while staff are on a
+  // different tab, so a new client message doesn't sit unnoticed.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      reloadConversations();
+    }, 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function selectClient(id) {
     setSelectedId(id);
@@ -540,6 +567,41 @@ function AdminDashboardAuthed({ onLoggedOut }) {
               </span>
             )}
           </button>
+          <button
+            onClick={() => {
+              setView("messages");
+              setSelectedId(null);
+            }}
+            style={{
+              background: view === "messages" ? COLORS.panelBorder : "transparent",
+              color: view === "messages" ? COLORS.bone : COLORS.boneDim,
+              border: "none",
+              borderRadius: 6,
+              padding: "6px 14px",
+              fontSize: 12.5,
+              fontWeight: 500,
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            <MessageCircle size={12} /> Messages
+            {unreadMessagesCount > 0 && (
+              <span
+                style={{
+                  background: COLORS.signal,
+                  color: COLORS.ink,
+                  borderRadius: 10,
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  padding: "1px 6px",
+                  marginLeft: 2,
+                }}
+              >
+                {unreadMessagesCount}
+              </span>
+            )}
+          </button>
         </nav>
 
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -700,6 +762,8 @@ function AdminDashboardAuthed({ onLoggedOut }) {
             <ReconciliationPanel totals={totals} records={reconciliations} onSubmit={addReconciliation} btcPrice={btcPrice} />
           ) : view === "verification" ? (
             <VerificationQueuePanel queue={verificationQueue} onReview={handleReviewDocument} />
+          ) : view === "messages" ? (
+            <MessagesPanel conversations={conversations} onSent={reloadConversations} />
           ) : !selected ? (
             <OverviewPanel clients={clients} totals={totals} revenue={revenue} onAddClient={() => setShowAddClient(true)} />
           ) : (
@@ -953,6 +1017,245 @@ function VerificationQueueRow({ doc, onReview }) {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// Staff inbox: a conversation list on the left (most recently active first,
+// with an unread badge per client) and the selected client's full thread on
+// the right, with a reply box. Polls the selected thread every 8s while
+// open, mirroring the client-side ChatPanel's polling approach.
+function MessagesPanel({ conversations, onSent }) {
+  const [selectedClientId, setSelectedClientId] = useState(null);
+  const [thread, setThread] = useState(null);
+  const [threadError, setThreadError] = useState("");
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const bottomRef = React.useRef(null);
+
+  const selectedConversation = conversations.find((c) => c.clientId === selectedClientId) || null;
+
+  async function loadThread(clientId) {
+    try {
+      const data = await getConversationThread(clientId);
+      setThread(data);
+      setThreadError("");
+    } catch (err) {
+      setThreadError(err.message || "Could not load conversation");
+    }
+  }
+
+  useEffect(() => {
+    if (!selectedClientId) return;
+    loadThread(selectedClientId);
+    const interval = setInterval(() => loadThread(selectedClientId), 8000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClientId]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [thread]);
+
+  async function handleSend(e) {
+    e.preventDefault();
+    const body = draft.trim();
+    if (!body || !selectedClientId) return;
+    setSending(true);
+    try {
+      await sendStaffMessage(selectedClientId, body);
+      setDraft("");
+      await loadThread(selectedClientId);
+      onSent();
+    } catch (err) {
+      setThreadError(err.message || "Could not send message");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Messages</div>
+      <div style={{ fontSize: 13, color: COLORS.boneDim, marginBottom: 20 }}>
+        Client support conversations — replies appear in their dashboard within a few seconds.
+      </div>
+
+      {conversations.length === 0 ? (
+        <div
+          style={{
+            border: `1px dashed ${COLORS.panelBorder}`,
+            borderRadius: 12,
+            padding: "48px 24px",
+            textAlign: "center",
+            color: COLORS.boneDim,
+          }}
+        >
+          <MessageCircle size={22} color={COLORS.boneDim} style={{ marginBottom: 12 }} />
+          <div style={{ fontSize: 14.5 }}>No client messages yet.</div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 16, height: 560 }}>
+          <div
+            style={{
+              width: 280,
+              flexShrink: 0,
+              background: COLORS.panel,
+              border: `1px solid ${COLORS.panelBorder}`,
+              borderRadius: 12,
+              overflowY: "auto",
+            }}
+          >
+            {conversations.map((c) => {
+              const isActive = c.clientId === selectedClientId;
+              return (
+                <button
+                  key={c.clientId}
+                  onClick={() => setSelectedClientId(c.clientId)}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    background: isActive ? COLORS.panelBorder : "transparent",
+                    border: "none",
+                    borderBottom: `1px solid ${COLORS.panelBorder}`,
+                    padding: "14px 16px",
+                    color: COLORS.bone,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 600 }}>{c.clientName}</span>
+                    {c.unreadCount > 0 && (
+                      <span
+                        style={{
+                          background: COLORS.signal,
+                          color: COLORS.ink,
+                          borderRadius: 10,
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          padding: "1px 6px",
+                        }}
+                      >
+                        {c.unreadCount}
+                      </span>
+                    )}
+                  </div>
+                  {c.lastMessage && (
+                    <div
+                      style={{
+                        fontSize: 11.5,
+                        color: COLORS.boneDim,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {c.lastMessage.senderType === "STAFF" ? "You: " : ""}
+                      {c.lastMessage.body}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              background: COLORS.panel,
+              border: `1px solid ${COLORS.panelBorder}`,
+              borderRadius: 12,
+              overflow: "hidden",
+            }}
+          >
+            {!selectedConversation ? (
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: COLORS.boneDim, fontSize: 13.5 }}>
+                Select a conversation on the left.
+              </div>
+            ) : (
+              <>
+                <div style={{ padding: "14px 18px", borderBottom: `1px solid ${COLORS.panelBorder}` }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 600 }}>{selectedConversation.clientName}</div>
+                  <div style={{ fontSize: 11.5, color: COLORS.boneDim }}>{selectedConversation.clientEmail}</div>
+                </div>
+
+                <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+                  {!thread ? (
+                    <div style={{ color: COLORS.boneDim, fontSize: 13 }}>Loading…</div>
+                  ) : (
+                    thread.messages.map((m) => {
+                      const fromStaff = m.senderType === "STAFF";
+                      return (
+                        <div key={m.id} style={{ display: "flex", justifyContent: fromStaff ? "flex-end" : "flex-start" }}>
+                          <div
+                            style={{
+                              maxWidth: "70%",
+                              background: fromStaff ? COLORS.signal : COLORS.ink,
+                              color: fromStaff ? COLORS.ink : COLORS.bone,
+                              borderRadius: fromStaff ? "10px 10px 2px 10px" : "10px 10px 10px 2px",
+                              padding: "9px 13px",
+                              fontSize: 13.5,
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.body}</div>
+                            <div style={{ fontSize: 10, marginTop: 4, opacity: 0.7 }}>
+                              {new Date(m.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <div ref={bottomRef} />
+                </div>
+
+                <form onSubmit={handleSend} style={{ display: "flex", gap: 8, padding: 12, borderTop: `1px solid ${COLORS.panelBorder}` }}>
+                  <input
+                    type="text"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    placeholder="Reply…"
+                    maxLength={4000}
+                    style={{
+                      flex: 1,
+                      background: COLORS.ink,
+                      border: `1px solid ${COLORS.panelBorder}`,
+                      borderRadius: 8,
+                      padding: "10px 12px",
+                      fontSize: 13.5,
+                      color: COLORS.bone,
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={sending || !draft.trim()}
+                    style={{
+                      background: COLORS.signal,
+                      color: COLORS.ink,
+                      border: "none",
+                      borderRadius: 8,
+                      width: 42,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      opacity: sending || !draft.trim() ? 0.6 : 1,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Send size={16} />
+                  </button>
+                </form>
+                {threadError && <div style={{ color: COLORS.loss, fontSize: 12, padding: "0 16px 12px" }}>{threadError}</div>}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

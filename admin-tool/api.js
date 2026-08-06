@@ -200,3 +200,15 @@ export async function viewVerificationDocument(documentId) {
   const blob = await res.blob();
   return URL.createObjectURL(blob);
 }
+
+export async function getConversations() {
+  return request("/api/messages/conversations");
+}
+
+export async function getConversationThread(clientId) {
+  return request(`/api/messages/${encodeURIComponent(clientId)}`);
+}
+
+export async function sendStaffMessage(clientId, body) {
+  return request(`/api/messages/${encodeURIComponent(clientId)}`, { method: "POST", body: { body } });
+}
