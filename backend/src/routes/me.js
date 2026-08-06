@@ -9,7 +9,10 @@ const {
   findTier,
   addMonths,
   getActiveSubscription,
+  isWithdrawalLocked,
 } = require("../lib/subscriptions");
+const { getDepositWallets } = require("../lib/depositWallets");
+const { sendSubscriptionStartedEmail } = require("../lib/email");
 
 const router = express.Router();
 router.use(requireClientAuth);
@@ -38,6 +41,8 @@ router.get("/", async (req, res) => {
     email: client.email,
     depositReference: client.depositReference,
     depositAddress: process.env.SHARED_DEPOSIT_ADDRESS || null,
+    depositWallets: getDepositWallets(),
+    totpEnabled: client.totpEnabled,
     deposits: client.deposits,
     withdrawals: client.withdrawals,
     trades: client.trades,
@@ -130,7 +135,63 @@ router.post("/subscribe", async (req, res) => {
     detail: `${tier.name} (${tier.tierMonths}mo), $${amountUsd}`,
   });
 
+  // Best-effort — never blocks the response (see lib/email.js).
+  sendSubscriptionStartedEmail(client, tier.name, amountUsd, subscription.endDate).catch(() => {});
+
   res.status(201).json({ subscription });
+});
+
+const withdrawSchema = z.object({
+  amountUsd: z.number().positive(),
+  destination: z.string().trim().min(6, "Enter a valid destination wallet address"),
+});
+
+// POST /api/me/withdraw — client requests money out. This only creates a
+// PENDING withdrawal for staff to review and actually send — it never moves
+// funds itself. Blocked while an active subscription has the balance locked,
+// and blocked if the requested amount exceeds the current balance.
+router.post("/withdraw", async (req, res) => {
+  const parsed = withdrawSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const client = await prisma.client.findUnique({
+    where: { id: req.client.id },
+    include: { deposits: true, withdrawals: true, trades: true, subscriptions: true },
+  });
+  if (!client) return res.status(404).json({ error: "Account not found" });
+
+  if (isWithdrawalLocked(client.subscriptions)) {
+    return res.status(409).json({
+      error: "Your funds are locked while a trading plan is active. Withdrawals reopen once it ends.",
+    });
+  }
+
+  const { amountUsd, destination } = parsed.data;
+  const summary = computeClientSummary(client);
+  if (amountUsd > summary.balance) {
+    return res.status(400).json({
+      error: `You requested $${amountUsd}, but your current balance is $${summary.balance.toFixed(2)}.`,
+    });
+  }
+
+  const withdrawal = await prisma.withdrawal.create({
+    data: {
+      clientId: client.id,
+      amountUsd,
+      destination,
+      requestedBy: "client",
+      status: "PENDING",
+    },
+  });
+
+  await logClientAction({
+    clientId: client.id,
+    action: "withdrawal.requested",
+    targetId: withdrawal.id,
+    detail: `amount=${amountUsd} destination=${destination}`,
+  });
+
+  res.status(201).json({ withdrawal });
 });
 
 const RANGE_DAYS = { "7d": 7, "30d": 30, "90d": 90, "180d": 180, "365d": 365 };

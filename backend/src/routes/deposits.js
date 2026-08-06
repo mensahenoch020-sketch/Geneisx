@@ -3,6 +3,7 @@ const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const { requireStaffAuth } = require("../middleware/auth");
 const { logAction } = require("../lib/audit");
+const { sendDepositConfirmedEmail } = require("../lib/email");
 
 const router = express.Router();
 router.use(requireStaffAuth);
@@ -40,6 +41,10 @@ router.post("/", async (req, res) => {
     detail: `client=${client.id} amount=${parsed.data.amountUsd}`,
     clientId: client.id,
   });
+
+  // Best-effort — never blocks the response if email sending fails or isn't
+  // configured (see lib/email.js).
+  sendDepositConfirmedEmail(client, parsed.data.amountUsd).catch(() => {});
 
   res.status(201).json(deposit);
 });

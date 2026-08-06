@@ -4,6 +4,7 @@ const prisma = require("../lib/prisma");
 const { requireStaffAuth, requireOwner } = require("../middleware/auth");
 const { logAction } = require("../lib/audit");
 const { isWithdrawalLocked } = require("../lib/subscriptions");
+const { sendWithdrawalProcessedEmail } = require("../lib/email");
 
 const router = express.Router();
 router.use(requireStaffAuth);
@@ -87,6 +88,10 @@ router.post("/:id/process", requireOwner, async (req, res) => {
     detail: `amount=${withdrawal.amountUsd} txHash=${parsed.data.txHash}`,
     clientId: withdrawal.clientId,
   });
+
+  // Best-effort — never blocks the response (see lib/email.js).
+  const client = await prisma.client.findUnique({ where: { id: withdrawal.clientId } });
+  if (client) sendWithdrawalProcessedEmail(client, withdrawal.amountUsd, parsed.data.txHash).catch(() => {});
 
   res.json(updated);
 });

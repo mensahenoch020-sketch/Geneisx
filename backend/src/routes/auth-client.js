@@ -2,7 +2,15 @@ const express = require("express");
 const { z } = require("zod");
 const rateLimit = require("express-rate-limit");
 const prisma = require("../lib/prisma");
-const { verifyPassword, hashPassword, signToken } = require("../lib/auth");
+const {
+  verifyPassword,
+  hashPassword,
+  signToken,
+  generateTotpSecret,
+  totpKeyUri,
+  totpQrCodeDataUrl,
+  verifyTotp,
+} = require("../lib/auth");
 const { requireClientAuth } = require("../middleware/auth");
 const { logClientAction } = require("../lib/audit");
 const { generateUniqueDepositReference } = require("../lib/depositReference");
@@ -80,19 +88,30 @@ router.post("/signup", signupLimiter, async (req, res) => {
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  totpToken: z.string().optional(), // required only if the client has 2FA enabled
 });
 
 // POST /auth/client/login
 router.post("/login", loginLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid request" });
-  const { email, password } = parsed.data;
+  const { email, password, totpToken } = parsed.data;
 
   const client = await prisma.client.findUnique({ where: { email } });
   if (!client) return res.status(401).json({ error: "Invalid email or password" });
 
   const validPassword = await verifyPassword(password, client.passwordHash);
   if (!validPassword) return res.status(401).json({ error: "Invalid email or password" });
+
+  // 2FA is opt-in for clients (unlike Owner, where it's mandatory) — only
+  // enforced if this specific client has turned it on for their own account.
+  if (client.totpEnabled) {
+    if (!totpToken) {
+      return res.status(401).json({ error: "2FA code required", code: "TOTP_REQUIRED" });
+    }
+    const valid = verifyTotp(totpToken, client.totpSecret);
+    if (!valid) return res.status(401).json({ error: "Invalid 2FA code" });
+  }
 
   // Client tokens are typed "client" and carry only their own id — never a role,
   // never access to any other client's data. Routes must still re-check this
@@ -104,6 +123,62 @@ router.post("/login", loginLimiter, async (req, res) => {
     client: { id: client.id, name: client.name, email: client.email },
     mustChangePassword: client.mustChangePassword,
   });
+});
+
+// POST /auth/client/totp/setup — begin 2FA enrollment. Stores the secret but
+// doesn't mark totpEnabled until /totp/verify proves the client can generate
+// a valid code with it (same two-step pattern as staff 2FA).
+router.post("/totp/setup", requireClientAuth, async (req, res) => {
+  const secret = generateTotpSecret();
+  const uri = totpKeyUri(req.client.email, secret);
+  const qr = await totpQrCodeDataUrl(uri);
+
+  await prisma.client.update({
+    where: { id: req.client.id },
+    data: { totpSecret: secret, totpEnabled: false },
+  });
+
+  res.json({ qrCodeDataUrl: qr, secret });
+});
+
+const totpVerifySchema = z.object({ token: z.string().min(6).max(6) });
+
+// POST /auth/client/totp/verify — confirm enrollment; flips totpEnabled to true.
+router.post("/totp/verify", requireClientAuth, async (req, res) => {
+  const parsed = totpVerifySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Enter the 6-digit code" });
+
+  const client = await prisma.client.findUnique({ where: { id: req.client.id } });
+  if (!client.totpSecret) return res.status(400).json({ error: "No 2FA setup in progress" });
+
+  const valid = verifyTotp(parsed.data.token, client.totpSecret);
+  if (!valid) return res.status(401).json({ error: "Invalid code — try again" });
+
+  await prisma.client.update({ where: { id: client.id }, data: { totpEnabled: true } });
+  await logClientAction({ clientId: client.id, action: "client.totp_enabled", targetId: client.id });
+
+  res.json({ ok: true });
+});
+
+const totpDisableSchema = z.object({ password: z.string().min(1) });
+
+// POST /auth/client/totp/disable — requires re-entering the current password,
+// since turning off 2FA is a security-lowering action.
+router.post("/totp/disable", requireClientAuth, async (req, res) => {
+  const parsed = totpDisableSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Password is required" });
+
+  const client = await prisma.client.findUnique({ where: { id: req.client.id } });
+  const validPassword = await verifyPassword(parsed.data.password, client.passwordHash);
+  if (!validPassword) return res.status(401).json({ error: "Incorrect password" });
+
+  await prisma.client.update({
+    where: { id: client.id },
+    data: { totpSecret: null, totpEnabled: false },
+  });
+  await logClientAction({ clientId: client.id, action: "client.totp_disabled", targetId: client.id });
+
+  res.json({ ok: true });
 });
 
 const changePasswordLimiter = rateLimit({
