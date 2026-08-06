@@ -15,6 +15,7 @@ const reconciliationRoutes = require("./routes/reconciliation");
 const meRoutes = require("./routes/me");
 const { staffRouter: statementsStaffRoutes, selfRouter: statementsSelfRoutes } = require("./routes/statements");
 const { staffRouter: verificationStaffRoutes, selfRouter: verificationSelfRoutes } = require("./routes/verification");
+const { staffRouter: messagesStaffRoutes, selfRouter: messagesSelfRoutes } = require("./routes/messages");
 
 const app = express();
 
@@ -61,15 +62,17 @@ app.use("/api/trades", tradesRoutes);
 app.use("/api/reconciliation", reconciliationRoutes);
 app.use("/api/statements", statementsStaffRoutes);
 app.use("/api/verification", verificationStaffRoutes);
+app.use("/api/messages", messagesStaffRoutes);
 
 // Client-facing (client dashboard)
-// IMPORTANT: /api/me/statement and /api/me/verification must be mounted
-// BEFORE /api/me — Express matches mount prefixes in registration order, so
-// if the broader /api/me mount came first, requests to either of these would
-// be swallowed by meRoutes (which only defines "/" and "/performance") and
-// 404 before ever reaching the intended router.
+// IMPORTANT: /api/me/statement, /api/me/verification, and /api/me/messages
+// must be mounted BEFORE /api/me — Express matches mount prefixes in
+// registration order, so if the broader /api/me mount came first, requests
+// to any of these would be swallowed by meRoutes (which only defines "/"
+// and "/performance") and 404 before ever reaching the intended router.
 app.use("/api/me/statement", statementsSelfRoutes);
 app.use("/api/me/verification", verificationSelfRoutes);
+app.use("/api/me/messages", messagesSelfRoutes);
 app.use("/api/me", meRoutes);
 app.use("/api/notifications", require("./routes/notifications"));
 
