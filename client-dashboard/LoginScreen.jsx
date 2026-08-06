@@ -73,19 +73,31 @@ export default function LoginScreen({ onAuthenticated }) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  // If the account has 2FA enabled, the first login attempt (email+password,
+  // no code) comes back with code "TOTP_REQUIRED" instead of succeeding —
+  // this switches the form to ask for the 6-digit code and resubmits with
+  // the same email/password plus that code.
+  const [needsTotp, setNeedsTotp] = useState(false);
+  const [totpToken, setTotpToken] = useState("");
+
   async function handleLogin(e) {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      const data = await login(email.trim(), password);
+      const data = await login(email.trim(), password, needsTotp ? totpToken.trim() : undefined);
       if (data.mustChangePassword) {
         setMustChangePassword(true);
       } else {
         onAuthenticated();
       }
     } catch (err) {
-      setError(err.message || "Login failed");
+      if (err.code === "TOTP_REQUIRED") {
+        setNeedsTotp(true);
+        setError("");
+      } else {
+        setError(err.message || "Login failed");
+      }
     } finally {
       setLoading(false);
     }
@@ -186,46 +198,96 @@ export default function LoginScreen({ onAuthenticated }) {
         {!mustChangePassword ? (
           mode === "login" ? (
             <form onSubmit={handleLogin}>
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>Email</label>
-                <input
-                  style={inputStyle}
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required
-                  autoComplete="username"
-                />
-              </div>
-              <div style={{ marginBottom: 8 }}>
-                <label style={labelStyle}>Password</label>
-                <input
-                  style={inputStyle}
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  autoComplete="current-password"
-                />
-              </div>
+              {!needsTotp ? (
+                <>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={labelStyle}>Email</label>
+                    <input
+                      style={inputStyle}
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      required
+                      autoComplete="username"
+                    />
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={labelStyle}>Password</label>
+                    <input
+                      style={inputStyle}
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                      autoComplete="current-password"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div style={{ marginBottom: 8 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      fontSize: 12,
+                      color: COLORS.boneDim,
+                      marginBottom: 16,
+                      lineHeight: 1.5,
+                      background: "rgba(255,255,255,0.03)",
+                      border: `1px solid ${COLORS.panelBorder}`,
+                      borderRadius: 8,
+                      padding: 12,
+                    }}
+                  >
+                    <ShieldCheck size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+                    <div>Enter the 6-digit code from your authenticator app.</div>
+                  </div>
+                  <label style={labelStyle}>2FA code</label>
+                  <input
+                    style={{ ...inputStyle, letterSpacing: 4, fontSize: 18, textAlign: "center" }}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    value={totpToken}
+                    onChange={(e) => setTotpToken(e.target.value.replace(/\D/g, ""))}
+                    placeholder="000000"
+                    required
+                    autoFocus
+                  />
+                </div>
+              )}
               {error && (
                 <div style={{ color: COLORS.loss, fontSize: 12.5, marginTop: 10 }}>{error}</div>
               )}
               <button style={{ ...buttonStyle, opacity: loading ? 0.7 : 1 }} type="submit" disabled={loading}>
-                {loading ? "Signing in…" : "Sign in"}
+                {loading ? "Signing in…" : needsTotp ? "Verify & sign in" : "Sign in"}
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode("signup");
-                  setError("");
-                }}
-                style={linkButtonStyle}
-              >
-                New here? Create an account →
-              </button>
+              {needsTotp ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNeedsTotp(false);
+                    setTotpToken("");
+                    setError("");
+                  }}
+                  style={linkButtonStyle}
+                >
+                  ← Back
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("signup");
+                    setError("");
+                  }}
+                  style={linkButtonStyle}
+                >
+                  New here? Create an account →
+                </button>
+              )}
             </form>
           ) : (
             <form onSubmit={handleSignup}>

@@ -28,9 +28,10 @@ export function clearToken() {
 }
 
 class ApiError extends Error {
-  constructor(message, status) {
+  constructor(message, status, code = null) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -58,13 +59,16 @@ async function request(path, { method = "GET", body, headers = {} } = {}) {
   }
 
   if (!res.ok) {
-    throw new ApiError(data?.error || `Request failed (${res.status})`, res.status);
+    throw new ApiError(data?.error || `Request failed (${res.status})`, res.status, data?.code || null);
   }
   return data;
 }
 
-export async function login(email, password) {
-  const data = await request("/auth/client/login", { method: "POST", body: { email, password } });
+export async function login(email, password, totpToken) {
+  const data = await request("/auth/client/login", {
+    method: "POST",
+    body: { email, password, ...(totpToken ? { totpToken } : {}) },
+  });
   setToken(data.token);
   return data;
 }
@@ -80,6 +84,10 @@ export async function signup({ name, email, password, contact }) {
 
 export async function subscribe(tierKey, amountUsd) {
   return request("/api/me/subscribe", { method: "POST", body: { tierKey, amountUsd } });
+}
+
+export async function requestWithdrawal(amountUsd, destination) {
+  return request("/api/me/withdraw", { method: "POST", body: { amountUsd, destination } });
 }
 
 export async function changePassword(currentPassword, newPassword) {
@@ -174,3 +182,25 @@ export async function submitVerificationDocument({ country, documentType, file }
 }
 
 export { ApiError };
+
+// ---------- 2FA (client-facing) ----------
+export async function totpSetup() {
+  return request("/auth/client/totp/setup", { method: "POST" });
+}
+
+export async function totpVerify(token) {
+  return request("/auth/client/totp/verify", { method: "POST", body: { token } });
+}
+
+export async function totpDisable(password) {
+  return request("/auth/client/totp/disable", { method: "POST", body: { password } });
+}
+
+// ---------- Support chat (client-facing) ----------
+export async function fetchMessages() {
+  return request("/api/me/messages");
+}
+
+export async function sendMessage(body) {
+  return request("/api/me/messages", { method: "POST", body: { body } });
+}

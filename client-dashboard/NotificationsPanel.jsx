@@ -1,16 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Bell, CheckCircle2, XCircle, ArrowDownCircle, Send, KeyRound } from "lucide-react";
 import { fetchNotifications, ApiError } from "./api.js";
-
-const COLORS = {
-  panel: "#0E1510",
-  panelBorder: "#1C2A20",
-  bone: "#E7EFE9",
-  boneDim: "#8CA294",
-  gain: "#3FE28E",
-  loss: "#e8604c",
-  signal: "#E8B84C",
-};
+import { COLORS } from "./dashboard/shared.jsx";
 
 const ICONS = {
   deposit: { Icon: ArrowDownCircle, color: COLORS.gain },

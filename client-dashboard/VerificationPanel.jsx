@@ -5,7 +5,7 @@ import { COLORS } from "./dashboard/shared.jsx";
 
 const inputStyle = {
   width: "100%",
-  background: COLORS.ink,
+  background: COLORS.page,
   border: `1px solid ${COLORS.panelBorder}`,
   borderRadius: 8,
   padding: "10px 12px",
@@ -172,8 +172,8 @@ export default function VerificationPanel() {
               color: COLORS.loss,
               lineHeight: 1.6,
               marginBottom: 14,
-              background: "rgba(232,96,76,0.08)",
-              border: `1px solid rgba(232,96,76,0.25)`,
+              background: COLORS.lossBg,
+              border: `1px solid #F3C6BF`,
               borderRadius: 8,
               padding: 12,
             }}
