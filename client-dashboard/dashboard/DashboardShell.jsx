@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { useAccount } from "./AccountContext.jsx";
+import NotificationBell from "./NotificationBell.jsx";
 
 const NAV_GROUPS = [
   {
@@ -150,7 +151,12 @@ export default function DashboardShell({ onLoggedOut, children }) {
         </div>
       </aside>
 
-      <div className="dash-content">{children}</div>
+      <div className="dash-content">
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+          <NotificationBell />
+        </div>
+        {children}
+      </div>
     </div>
   );
 }
