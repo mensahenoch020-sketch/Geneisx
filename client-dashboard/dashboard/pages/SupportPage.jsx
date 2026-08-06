@@ -2,6 +2,7 @@ import React from "react";
 import { Mail, HelpCircle } from "lucide-react";
 import { useAccount } from "../AccountContext.jsx";
 import { COLORS, PageHeader, Card, CopyField, LoadingPage, ErrorPage } from "../shared.jsx";
+import ChatPanel from "../ChatPanel.jsx";
 
 const SUPPORT_EMAIL = "chasr1226@gmail.com";
 
@@ -93,6 +94,10 @@ export default function SupportPage() {
 
       <div style={{ marginBottom: 24 }}>
         <CopyField label="Your reference code — include this when you contact us" value={client.depositReference} mono />
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <ChatPanel />
       </div>
 
       <div style={{ fontSize: 11.5, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, fontWeight: 600, marginBottom: 4 }}>
