@@ -64,6 +64,8 @@ model Client {
   contact            String?
   walletRef          String?
   verificationStatus VerificationStatus @default(UNVERIFIED)
+  totpSecret         String?  // set once the client enables 2FA
+  totpEnabled        Boolean  @default(false)
   createdAt          DateTime @default(now())
 
   deposits      Deposit[]
@@ -71,6 +73,7 @@ model Client {
   trades        Trade[]
   subscriptions Subscription[]
   verificationDocuments VerificationDocument[]
+  messages      Message[]
 
   @@map("clients")
 }
@@ -212,4 +215,24 @@ model Reconciliation {
   createdAt   DateTime @default(now())
 
   @@map("reconciliations")
+}
+
+// One flat thread per client — every message (from the client or from any
+// staff member) in that client's support conversation lives here, ordered by
+// createdAt. senderType tells which side sent it; exactly one of
+// senderUserId/senderClientId is set per row, matching the AuditLog pattern.
+model Message {
+  id             String    @id @default(cuid())
+  client         Client    @relation(fields: [clientId], references: [id])
+  clientId       String
+  senderType     String    // "CLIENT" | "STAFF"
+  senderUserId   String?   // User.id — set when senderType = "STAFF"
+  senderClientId String?   // Client.id — set when senderType = "CLIENT" (== clientId, kept explicit for symmetry with AuditLog)
+  body           String
+  readByClient   Boolean   @default(false)
+  readByStaff    Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+
+  @@map("messages")
+  @@index([clientId])
 }
