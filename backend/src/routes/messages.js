@@ -4,6 +4,7 @@ const rateLimit = require("express-rate-limit");
 const prisma = require("../lib/prisma");
 const { requireClientAuth, requireStaffAuth } = require("../middleware/auth");
 const { logClientAction, logAction } = require("../lib/audit");
+const asyncHandler = require("../lib/asyncHandler");
 
 const sendLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -27,7 +28,7 @@ selfRouter.use(requireClientAuth);
 // GET /api/me/messages — the client's full thread, oldest first. Marks any
 // unread staff messages as read, since viewing the thread is what "read"
 // means from the client's side.
-selfRouter.get("/", async (req, res) => {
+selfRouter.get("/", asyncHandler(async (req, res) => {
   const messages = await prisma.message.findMany({
     where: { clientId: req.client.id },
     orderBy: { createdAt: "asc" },
@@ -39,10 +40,10 @@ selfRouter.get("/", async (req, res) => {
   }
 
   res.json({ messages });
-});
+}));
 
 // POST /api/me/messages — send a message to support.
-selfRouter.post("/", sendLimiter, async (req, res) => {
+selfRouter.post("/", sendLimiter, asyncHandler(async (req, res) => {
   const parsed = messageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Message can't be empty" });
 
@@ -60,7 +61,7 @@ selfRouter.post("/", sendLimiter, async (req, res) => {
   await logClientAction({ clientId: req.client.id, action: "message.sent", targetId: message.id });
 
   res.status(201).json({ message });
-});
+}));
 
 // ========== Staff-facing: /api/messages ==========
 const staffRouter = express.Router();
@@ -69,7 +70,7 @@ staffRouter.use(requireStaffAuth);
 // GET /api/messages/conversations — one row per client with any messages,
 // most-recently-active first, plus their unread-by-staff count. This is the
 // admin inbox list view.
-staffRouter.get("/conversations", async (req, res) => {
+staffRouter.get("/conversations", asyncHandler(async (req, res) => {
   const clients = await prisma.client.findMany({
     where: { messages: { some: {} } },
     select: {
@@ -97,11 +98,11 @@ staffRouter.get("/conversations", async (req, res) => {
     .sort((a, b) => new Date(b.lastMessage?.createdAt || 0) - new Date(a.lastMessage?.createdAt || 0));
 
   res.json({ conversations });
-});
+}));
 
 // GET /api/messages/:clientId — full thread with one client. Marks any
 // unread client messages as read by staff.
-staffRouter.get("/:clientId", async (req, res) => {
+staffRouter.get("/:clientId", asyncHandler(async (req, res) => {
   const client = await prisma.client.findUnique({ where: { id: req.params.clientId } });
   if (!client) return res.status(404).json({ error: "Client not found" });
 
@@ -116,10 +117,10 @@ staffRouter.get("/:clientId", async (req, res) => {
   }
 
   res.json({ client: { id: client.id, name: client.name, email: client.email }, messages });
-});
+}));
 
 // POST /api/messages/:clientId — staff reply to a specific client's thread.
-staffRouter.post("/:clientId", async (req, res) => {
+staffRouter.post("/:clientId", asyncHandler(async (req, res) => {
   const parsed = messageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Message can't be empty" });
 
@@ -145,6 +146,6 @@ staffRouter.post("/:clientId", async (req, res) => {
   });
 
   res.status(201).json({ message });
-});
+}));
 
 module.exports = { selfRouter, staffRouter };
