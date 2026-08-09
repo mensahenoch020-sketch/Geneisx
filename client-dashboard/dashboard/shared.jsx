@@ -1,16 +1,20 @@
 import React, { useState } from "react";
+import { EmptyBoxIllustration } from "../Illustrations.jsx";
 
-// Light/white theme — dark text on white/light-gray, matching the new
-// .dash-* CSS variables in theme.css. Every dashboard page reads its colors
-// from here, so changing this file re-themes the whole logged-in app.
-export const COLORS = {
-  ink: "#FFFFFF",        // surface / card background (kept the name "ink" so
-                          // existing calls like COLORS.ink for backgrounds
-                          // still work after the light-mode flip)
+// Light and dark palettes for the whole logged-in dashboard. COLORS itself
+// stays a single mutable object (never reassigned, only its properties
+// mutated via applyDashboardColors) — every dashboard file reads COLORS.x
+// directly inside its render body rather than destructuring it at module
+// scope, so mutating these properties in place and then triggering a
+// re-render anywhere above them in the tree (see DashboardShell's theme
+// toggle) is enough to re-theme every page without editing ~20 files
+// individually.
+const LIGHT = {
+  ink: "#FFFFFF",
   panel: "#FFFFFF",
   panelBorder: "#E4E9E6",
-  bone: "#121815",        // primary text
-  boneDim: "#68766F",     // secondary/dim text
+  bone: "#121815",
+  boneDim: "#68766F",
   gain: "#0F9D63",
   gainBg: "#E7F7EF",
   loss: "#DC4C3F",
@@ -19,6 +23,27 @@ export const COLORS = {
   signalBg: "#FBF1E1",
   page: "#F6F8F7",
 };
+
+const DARK = {
+  ink: "#0E1510",
+  panel: "#0E1510",
+  panelBorder: "#1C2A20",
+  bone: "#E7EFE9",
+  boneDim: "#8CA294",
+  gain: "#3FE28E",
+  gainBg: "rgba(63,226,142,0.12)",
+  loss: "#e8604c",
+  lossBg: "rgba(232,96,76,0.12)",
+  signal: "#E8B84C",
+  signalBg: "rgba(232,184,76,0.1)",
+  page: "#070A08",
+};
+
+export const COLORS = { ...LIGHT };
+
+export function applyDashboardColors(theme) {
+  Object.assign(COLORS, theme === "dark" ? DARK : LIGHT);
+}
 
 export const fmtUSD = (n, opts = {}) =>
   n == null ? "—" : n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2, ...opts });
@@ -87,13 +112,16 @@ export function EmptyState({ children }) {
       style={{
         color: COLORS.boneDim,
         fontSize: 14.5,
-        padding: "36px 20px",
+        padding: "28px 20px",
         textAlign: "center",
         border: `1.5px dashed ${COLORS.panelBorder}`,
         borderRadius: 12,
         background: COLORS.page,
       }}
     >
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
+        <EmptyBoxIllustration size={88} />
+      </div>
       {children}
     </div>
   );

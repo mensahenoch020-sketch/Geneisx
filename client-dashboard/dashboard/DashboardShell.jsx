@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutGrid,
@@ -15,9 +15,16 @@ import {
   ChevronLeft,
   Menu,
   X,
+  HelpCircle,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { useAccount } from "./AccountContext.jsx";
+import { applyDashboardColors } from "./shared.jsx";
+import { getTheme, setTheme as persistTheme } from "../theme.js";
 import NotificationBell from "./NotificationBell.jsx";
+import FloatingChatButton from "./FloatingChatButton.jsx";
+import Tutorial from "./Tutorial.jsx";
 
 const NAV_GROUPS = [
   {
@@ -63,6 +70,36 @@ export default function DashboardShell({ onLoggedOut, children }) {
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [dashTheme, setDashTheme] = useState(getTheme());
+
+  // Applying the palette on mount too (not just on toggle) means a page
+  // refresh while dark mode is set from a previous session immediately
+  // shows dark, instead of flashing light-then-dark.
+  useEffect(() => {
+    applyDashboardColors(dashTheme);
+  }, [dashTheme]);
+
+  function toggleDashTheme() {
+    const next = dashTheme === "dark" ? "light" : "dark";
+    persistTheme(next); // shared localStorage key with the marketing-site toggle
+    applyDashboardColors(next);
+    setDashTheme(next); // triggers the re-render that makes every page pick up the new COLORS values
+  }
+
+  const TUTORIAL_SEEN_KEY = "genesisx_tutorial_seen";
+  const [showTutorial, setShowTutorial] = useState(false);
+
+  React.useEffect(() => {
+    if (client && client.deposits.length === 0 && client.trades.length === 0 && !localStorage.getItem(TUTORIAL_SEEN_KEY)) {
+      setShowTutorial(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client]);
+
+  function closeTutorial() {
+    localStorage.setItem(TUTORIAL_SEEN_KEY, "1");
+    setShowTutorial(false);
+  }
 
   function go(to) {
     setMobileOpen(false);
@@ -139,6 +176,24 @@ export default function DashboardShell({ onLoggedOut, children }) {
 
         <div className="dash-sidebar-bottom">
           <button
+            className="dash-nav-item"
+            onClick={toggleDashTheme}
+            title={collapsed ? (dashTheme === "dark" ? "Switch to light mode" : "Switch to dark mode") : undefined}
+            style={{ marginBottom: 6 }}
+          >
+            {dashTheme === "dark" ? <Sun size={17} strokeWidth={1.8} /> : <Moon size={17} strokeWidth={1.8} />}
+            {!collapsed && <span>{dashTheme === "dark" ? "Light mode" : "Dark mode"}</span>}
+          </button>
+          <button
+            className="dash-nav-item"
+            onClick={() => setShowTutorial(true)}
+            title={collapsed ? "How it works" : undefined}
+            style={{ marginBottom: 6 }}
+          >
+            <HelpCircle size={17} strokeWidth={1.8} />
+            {!collapsed && <span>How it works</span>}
+          </button>
+          <button
             className="dash-logout-btn"
             onClick={() => {
               if (window.confirm("Log out of GenesisX?")) onLoggedOut();
@@ -157,6 +212,8 @@ export default function DashboardShell({ onLoggedOut, children }) {
         </div>
         {children}
       </div>
+      <FloatingChatButton />
+      {showTutorial && <Tutorial onClose={closeTutorial} />}
     </div>
   );
 }

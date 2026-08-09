@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { fetchMe, downloadStatement, subscribe, ApiError } from "../api.js";
+import { fetchMe, downloadStatement, subscribe, requestWithdrawal, ApiError } from "../api.js";
 
 // One shared fetch of /api/me for the whole dashboard shell, instead of each
 // sidebar page (Portfolio, Wallet, Transactions, Trade...) independently
@@ -21,6 +21,7 @@ function normalizeClient(apiClient) {
     email: apiClient.email,
     depositReference: apiClient.depositReference,
     depositAddress: apiClient.depositAddress,
+    depositWallets: apiClient.depositWallets || [],
     subscriptionTiers: apiClient.subscriptionTiers || [],
     activeSubscription: apiClient.activeSubscription
       ? {
@@ -242,8 +243,22 @@ export function AccountProvider({ onLoggedOut, children }) {
     }
   }
 
+  async function handleWithdraw(amountUsd, destination) {
+    try {
+      const result = await requestWithdrawal(amountUsd, destination);
+      await reload();
+      return { ok: true, withdrawal: result.withdrawal };
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        onLoggedOut();
+        return { ok: false };
+      }
+      throw err;
+    }
+  }
+
   const value = useMemo(
-    () => ({ client, loadError, reload, handleDownload, handleSubscribe }),
+    () => ({ client, loadError, reload, handleDownload, handleSubscribe, handleWithdraw }),
     [client, loadError]
   );
 
