@@ -7,6 +7,11 @@ import { buildEquityCurve, EquityChart, PriceTicker } from "../EquityChart.jsx";
 import { CoinCard } from "../CoinCard.jsx";
 import SubscriptionCard from "../SubscriptionCard.jsx";
 import OnboardingTracker from "../OnboardingTracker.jsx";
+import CryptoCarousel from "../CryptoCarousel.jsx";
+import WithdrawPanel from "../WithdrawPanel.jsx";
+import CurrencyConverter from "../CurrencyConverter.jsx";
+import TopMovers from "../TopMovers.jsx";
+import TierComparisonChart from "../TierComparisonChart.jsx";
 
 const RANGES = [
   { key: "7d", label: "1W", days: 7 },
@@ -28,6 +33,7 @@ export default function OverviewPage() {
   const { price: btcPrice, change: btcChange, status: priceStatus } = useLivePrice("bitcoin");
   const { coins: marketCoins, status: marketStatus } = useMarketData(["bitcoin", "ethereum", "solana"]);
   const [range, setRange] = useState("30d");
+  const [showWithdraw, setShowWithdraw] = useState(false);
 
   const rangeDays = RANGES.find((r) => r.key === range).days;
   const chartData = useMemo(() => (client ? buildEquityCurve(client, rangeDays) : []), [client, rangeDays]);
@@ -55,21 +61,7 @@ export default function OverviewPage() {
         <PriceTicker price={btcPrice} change={btcChange} status={priceStatus} />
       </div>
 
-      <OnboardingTracker />
-
-      <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 12 }}>
-        Live crypto updates
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 28 }}>
-        {marketStatus === "error" && <EmptyState>Couldn't load live prices right now.</EmptyState>}
-        {marketCoins && marketCoins.map((c) => <CoinCard key={c.id} coin={c} stale={marketStatus === "stale"} />)}
-      </div>
-
-      <div style={{ marginBottom: 28 }}>
-        <SubscriptionCard />
-      </div>
-
-      {isNewAccount && (
+      {isNewAccount ? (
         <div
           style={{
             background: COLORS.gainBg,
@@ -94,10 +86,9 @@ export default function OverviewPage() {
             Go to Wallet
           </Link>
         </div>
-      )}
-
-      {!isNewAccount && (
+      ) : (
         <>
+          {/* Balance + chart lead the page — the first thing a client sees. */}
           <div style={{ textAlign: "center", padding: "12px 0 8px" }}>
             <div style={{ fontSize: 12, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>
               Account balance
@@ -167,7 +158,7 @@ export default function OverviewPage() {
               border: `1px solid ${COLORS.panelBorder}`,
               borderRadius: 10,
               padding: 14,
-              marginBottom: 28,
+              marginBottom: 20,
               fontSize: 12,
               color: COLORS.boneDim,
               lineHeight: 1.6,
@@ -184,7 +175,82 @@ export default function OverviewPage() {
             <SummaryCard label="Total deposited" value={fmtUSD(deposited)} icon={ArrowDownToLine} accent="#4C9BE8" />
             <SummaryCard label="Total withdrawn" value={fmtUSD(withdrawn)} icon={ArrowUpFromLine} accent="#E8B84C" />
           </div>
+        </>
+      )}
 
+      <OnboardingTracker />
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
+        <Link
+          to="/dashboard/wallet"
+          style={{
+            flex: "1 1 160px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            background: COLORS.gain,
+            color: "#FFFFFF",
+            fontWeight: 700,
+            fontSize: 14,
+            padding: "14px 18px",
+            borderRadius: 10,
+          }}
+        >
+          <ArrowDownToLine size={16} /> Deposit
+        </Link>
+        <button
+          onClick={() => setShowWithdraw((s) => !s)}
+          style={{
+            flex: "1 1 160px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            background: COLORS.panel,
+            border: `1.5px solid ${COLORS.panelBorder}`,
+            color: COLORS.bone,
+            fontWeight: 700,
+            fontSize: 14,
+            padding: "14px 18px",
+            borderRadius: 10,
+          }}
+        >
+          <ArrowUpFromLine size={16} /> Withdraw
+        </button>
+      </div>
+
+      {showWithdraw && (
+        <div style={{ marginBottom: 24 }}>
+          <WithdrawPanel onClose={() => setShowWithdraw(false)} />
+        </div>
+      )}
+
+      <CryptoCarousel />
+
+      <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 12 }}>
+        Live crypto updates
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 28 }}>
+        {marketStatus === "error" && <EmptyState>Couldn't load live prices right now.</EmptyState>}
+        {marketCoins && marketCoins.map((c) => <CoinCard key={c.id} coin={c} stale={marketStatus === "stale"} />)}
+      </div>
+
+      <div style={{ marginBottom: 28 }}>
+        <SubscriptionCard />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, marginBottom: 28 }}>
+        <CurrencyConverter />
+        <TopMovers />
+      </div>
+
+      <div style={{ marginBottom: 28 }}>
+        <TierComparisonChart />
+      </div>
+
+      {!isNewAccount && (
+        <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div style={{ fontSize: 11, color: COLORS.boneDim, textTransform: "uppercase", letterSpacing: 0.6 }}>
               Recent activity
