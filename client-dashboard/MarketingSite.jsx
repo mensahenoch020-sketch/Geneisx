@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { CoinStackIllustration } from "./Illustrations.jsx";
 
 // React port of what used to be landing-page/index.html. Content and visual
 // design are unchanged from that file — only the mechanism changed (React
@@ -106,6 +107,8 @@ function MarketPulse() {
 
 export default function MarketingSite({ onNavigate }) {
   const location = useLocation();
+  const [publicStats, setPublicStats] = useState(null);
+
   useEffect(() => {
     const hash = location.hash.replace("#", "");
     if (hash) {
@@ -113,6 +116,17 @@ export default function MarketingSite({ onNavigate }) {
       if (el) el.scrollIntoView({ behavior: "smooth" });
     }
   }, [location.hash]);
+
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/public-stats")
+      .then((r) => r.json())
+      .then((data) => mounted && setPublicStats(data))
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <>
@@ -155,6 +169,29 @@ export default function MarketingSite({ onNavigate }) {
               <div className="label">Reach a real person</div>
             </div>
           </div>
+
+          {/* Real, live-computed numbers — not marketing copy. Only shown
+              once there's something real to show, so this never displays a
+              misleading "0 clients" in the early days. */}
+          {publicStats && publicStats.clientCount > 0 && (
+            <div className="hero-stats" style={{ marginTop: 14 }}>
+              <div className="hero-stat">
+                <div className="num">{publicStats.clientCount.toLocaleString()}+</div>
+                <div className="label">Clients</div>
+              </div>
+              <div className="hero-stat">
+                <div className="num">${Math.round(publicStats.totalDepositedUsd).toLocaleString()}+</div>
+                <div className="label">Deposited on-platform</div>
+              </div>
+              <div className="hero-stat">
+                <div className="num">{publicStats.closedTradeCount.toLocaleString()}+</div>
+                <div className="label">Trades executed</div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 24 }}>
+          <CoinStackIllustration size={160} />
         </div>
       </section>
 
