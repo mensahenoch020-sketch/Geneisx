@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Plus, TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight, X, ChevronRight, Activity, Clock, Check, ArrowDown, ArrowUp, Scale, AlertTriangle, ShieldCheck, Download, LogOut, MessageCircle, Send } from "lucide-react";
+import { Plus, TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight, X, ChevronRight, Activity, Clock, Check, ArrowDown, ArrowUp, Scale, AlertTriangle, ShieldCheck, ShieldAlert, Trash2, Pencil, Download, LogOut, MessageCircle, Send } from "lucide-react";
 import StaffLoginScreen from "./StaffLoginScreen.jsx";
 import {
   getToken,
@@ -8,10 +8,18 @@ import {
   getClient,
   createClient,
   createDeposit,
+  editDeposit,
+  deleteDeposit,
   createWithdrawal,
   processWithdrawal,
+  editWithdrawal,
+  deleteWithdrawal,
   createTrade,
   closeTrade,
+  editTrade,
+  deleteTrade,
+  blockClient,
+  deleteClient,
   getExpectedHoldings,
   getRevenue,
   getVerificationQueue,
@@ -23,6 +31,8 @@ import {
   getConversations,
   getConversationThread,
   sendStaffMessage,
+  getTierReturnEstimates,
+  setTierReturnEstimate,
   ApiError,
 } from "./api.js";
 
@@ -94,6 +104,7 @@ function normalizeClientSummary(c) {
     walletRef: c.walletRef,
     depositReference: c.depositReference,
     createdAt: c.createdAt,
+    blocked: !!c.blocked,
     activeSubscription: c.activeSubscription || null,
     // full detail (deposits/withdrawals/trades) is loaded lazily per-client via getClient()
     deposits: [],
@@ -113,6 +124,7 @@ function normalizeClientDetail(c) {
     walletRef: c.walletRef,
     depositReference: c.depositReference,
     createdAt: c.createdAt,
+    blocked: !!c.blocked,
     activeSubscription: c.activeSubscription || null,
     deposits: c.deposits.map((d) => ({ id: d.id, amount: Number(d.amountUsd), txHash: d.txHash, date: d.date })),
     withdrawals: c.withdrawals.map((w) => ({
@@ -422,6 +434,96 @@ function AdminDashboardAuthed({ onLoggedOut }) {
     }
   }
 
+  async function handleEditDeposit(clientId, depositId, changes) {
+    setActionError("");
+    try {
+      await editDeposit(depositId, changes);
+      await selectClient(clientId);
+      await reloadClientList();
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not edit deposit");
+    }
+  }
+
+  async function handleDeleteDeposit(clientId, depositId) {
+    setActionError("");
+    try {
+      await deleteDeposit(depositId);
+      await selectClient(clientId);
+      await reloadClientList();
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not delete deposit");
+    }
+  }
+
+  async function handleEditWithdrawal(clientId, withdrawalId, changes) {
+    setActionError("");
+    try {
+      await editWithdrawal(withdrawalId, changes);
+      await selectClient(clientId);
+      await reloadClientList();
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not edit withdrawal");
+    }
+  }
+
+  async function handleDeleteWithdrawal(clientId, withdrawalId) {
+    setActionError("");
+    try {
+      await deleteWithdrawal(withdrawalId);
+      await selectClient(clientId);
+      await reloadClientList();
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not delete withdrawal");
+    }
+  }
+
+  async function handleEditTrade(clientId, tradeId, changes) {
+    setActionError("");
+    try {
+      await editTrade(tradeId, changes);
+      await selectClient(clientId);
+      await reloadClientList();
+      await reloadRevenue();
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not edit trade");
+    }
+  }
+
+  async function handleDeleteTrade(clientId, tradeId) {
+    setActionError("");
+    try {
+      await deleteTrade(tradeId);
+      await selectClient(clientId);
+      await reloadClientList();
+      await reloadRevenue();
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not delete trade");
+    }
+  }
+
+  async function handleBlockClient(clientId, blocked) {
+    setActionError("");
+    try {
+      await blockClient(clientId, blocked);
+      await selectClient(clientId);
+      await reloadClientList();
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not update client status");
+    }
+  }
+
+  async function handleDeleteClient(clientId) {
+    setActionError("");
+    try {
+      await deleteClient(clientId);
+      setSelectedId(null);
+      await reloadClientList();
+    } catch (err) {
+      if (!handleAuthError(err)) setActionError(err.message || "Could not delete client");
+    }
+  }
+
   async function handleDownloadStatement(clientId, format) {
     setActionError("");
     try {
@@ -457,10 +559,33 @@ function AdminDashboardAuthed({ onLoggedOut }) {
         .scrollbar-thin::-webkit-scrollbar-thumb { background: ${COLORS.panelBorder}; border-radius: 3px; }
         button { font-family: inherit; cursor: pointer; }
         input, select { font-family: inherit; }
+
+        /* Responsive fixes — this admin tool was laptop-only before: a fixed
+           side-by-side sidebar+content shell, a header nav row with no wrap,
+           and a couple of grids/two-column layouts with no mobile fallback.
+           None of that reflowed on a phone, which is what caused text/columns
+           to visually overlap. */
+        .admin-header { flex-wrap: wrap; row-gap: 10px; }
+        .admin-header-nav { flex-wrap: wrap; }
+        .admin-shell { flex-direction: row; }
+        .admin-sidebar { width: 280px; flex-shrink: 0; }
+        .admin-messages-layout { flex-direction: row; }
+        .admin-messages-list { width: 280px; flex-shrink: 0; }
+
+        @media (max-width: 860px) {
+          .admin-header { padding: 14px 16px; }
+          .admin-header-nav { width: 100%; order: 3; justify-content: flex-start; overflow-x: auto; }
+          .admin-shell { flex-direction: column; }
+          .admin-sidebar { width: 100%; max-height: 280px; }
+          .admin-content { padding: 20px 16px !important; }
+          .admin-messages-layout { flex-direction: column; height: auto !important; }
+          .admin-messages-list { width: 100%; max-height: 220px; }
+        }
       `}</style>
 
       {/* Header */}
       <header
+        className="admin-header"
         style={{
           borderBottom: `1px solid ${COLORS.panelBorder}`,
           padding: "18px 28px",
@@ -497,7 +622,7 @@ function AdminDashboardAuthed({ onLoggedOut }) {
           </div>
         </div>
 
-        <nav style={{ display: "flex", gap: 4, background: COLORS.panel, borderRadius: 8, padding: 3 }}>
+        <nav className="admin-header-nav" style={{ display: "flex", gap: 4, background: COLORS.panel, borderRadius: 8, padding: 3 }}>
           <button
             onClick={() => setView("clients")}
             style={{
@@ -602,6 +727,26 @@ function AdminDashboardAuthed({ onLoggedOut }) {
               </span>
             )}
           </button>
+          <button
+            onClick={() => {
+              setView("plans");
+              setSelectedId(null);
+            }}
+            style={{
+              background: view === "plans" ? COLORS.panelBorder : "transparent",
+              color: view === "plans" ? COLORS.bone : COLORS.boneDim,
+              border: "none",
+              borderRadius: 6,
+              padding: "6px 14px",
+              fontSize: 12.5,
+              fontWeight: 500,
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            <TrendingUp size={12} /> Plans
+          </button>
         </nav>
 
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -652,9 +797,10 @@ function AdminDashboardAuthed({ onLoggedOut }) {
         </div>
       )}
 
-      <div style={{ display: "flex", minHeight: "calc(100vh - 68px)" }}>
+      <div className="admin-shell" style={{ display: "flex", minHeight: "calc(100vh - 68px)" }}>
         {/* Client list */}
         <aside
+          className="admin-sidebar"
           style={{
             width: 300,
             borderRight: `1px solid ${COLORS.panelBorder}`,
@@ -757,13 +903,15 @@ function AdminDashboardAuthed({ onLoggedOut }) {
 
 
         {/* Main panel */}
-        <main style={{ flex: 1, padding: "24px 32px" }}>
+        <main className="admin-content" style={{ flex: 1, padding: "24px 32px", minWidth: 0 }}>
           {view === "reconciliation" ? (
             <ReconciliationPanel totals={totals} records={reconciliations} onSubmit={addReconciliation} btcPrice={btcPrice} />
           ) : view === "verification" ? (
             <VerificationQueuePanel queue={verificationQueue} onReview={handleReviewDocument} />
           ) : view === "messages" ? (
             <MessagesPanel conversations={conversations} onSent={reloadConversations} />
+          ) : view === "plans" ? (
+            <PlansPanel />
           ) : !selected ? (
             <OverviewPanel clients={clients} totals={totals} revenue={revenue} onAddClient={() => setShowAddClient(true)} />
           ) : (
@@ -775,6 +923,14 @@ function AdminDashboardAuthed({ onLoggedOut }) {
               onMarkProcessed={(withdrawalId, txHash) => markWithdrawalProcessed(selected.id, withdrawalId, txHash)}
               onDownloadStatement={(format) => handleDownloadStatement(selected.id, format)}
               onCloseTrade={(tradeId, exit) => closeExistingTrade(selected.id, tradeId, exit)}
+              onEditDeposit={(depositId, changes) => handleEditDeposit(selected.id, depositId, changes)}
+              onDeleteDeposit={(depositId) => handleDeleteDeposit(selected.id, depositId)}
+              onEditWithdrawal={(withdrawalId, changes) => handleEditWithdrawal(selected.id, withdrawalId, changes)}
+              onDeleteWithdrawal={(withdrawalId) => handleDeleteWithdrawal(selected.id, withdrawalId)}
+              onEditTrade={(tradeId, changes) => handleEditTrade(selected.id, tradeId, changes)}
+              onDeleteTrade={(tradeId) => handleDeleteTrade(selected.id, tradeId)}
+              onBlockClient={(blocked) => handleBlockClient(selected.id, blocked)}
+              onDeleteClient={() => handleDeleteClient(selected.id)}
               btcPrice={btcPrice}
             />
           )}
@@ -833,7 +989,7 @@ function OverviewPanel({ clients, totals, revenue, onAddClient }) {
         <p style={{ color: COLORS.boneDim, fontSize: 13.5, marginTop: 4 }}>Across all client accounts</p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14, marginBottom: 20 }}>
         <StatCard label="Total deposited" value={fmtUSD(totals.deposited)} />
         <StatCard
           label="Total P&L"
@@ -844,7 +1000,7 @@ function OverviewPanel({ clients, totals, revenue, onAddClient }) {
       </div>
 
       {revenue && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 32 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14, marginBottom: 32 }}>
           <StatCard label="Subscription revenue" value={fmtUSD(revenue.subscriptionRevenue)} color={COLORS.signal} />
           <StatCard label="Performance fee revenue" value={fmtUSD(revenue.performanceFeeRevenue)} color={COLORS.signal} />
           <StatCard label="Total revenue" value={fmtUSD(revenue.totalRevenue)} color={COLORS.signal} />
@@ -1095,8 +1251,9 @@ function MessagesPanel({ conversations, onSent }) {
           <div style={{ fontSize: 14.5 }}>No client messages yet.</div>
         </div>
       ) : (
-        <div style={{ display: "flex", gap: 16, height: 560 }}>
+        <div className="admin-messages-layout" style={{ display: "flex", gap: 16, height: 560 }}>
           <div
+            className="admin-messages-list"
             style={{
               width: 280,
               flexShrink: 0,
@@ -1260,6 +1417,110 @@ function MessagesPanel({ conversations, onSent }) {
   );
 }
 
+// Lets Owner set/edit the "typical return" text shown on each subscription
+// tier's card in the client dashboard. Deliberately a plain free-text field
+// per tier, not a number Claude computes — see schema.prisma
+// TierReturnEstimate for why. The client-facing display always pairs
+// whatever's set here with a "past performance, not a guarantee" disclaimer.
+function PlansPanel() {
+  const [tiers, setTiers] = useState(null);
+  const [drafts, setDrafts] = useState({});
+  const [savingKey, setSavingKey] = useState(null);
+  const [error, setError] = useState("");
+  const [savedKey, setSavedKey] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    getTierReturnEstimates()
+      .then((data) => {
+        if (!mounted) return;
+        setTiers(data.tiers);
+        setDrafts(Object.fromEntries(data.tiers.map((t) => [t.key, t.returnEstimate || ""])));
+      })
+      .catch((err) => setError(err.message || "Could not load plans"));
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  async function save(tierKey) {
+    setSavingKey(tierKey);
+    setError("");
+    setSavedKey(null);
+    try {
+      await setTierReturnEstimate(tierKey, drafts[tierKey].trim() || null);
+      setSavedKey(tierKey);
+      setTimeout(() => setSavedKey(null), 2000);
+    } catch (err) {
+      setError(err.message || "Could not save");
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  if (!tiers) return <div style={{ color: COLORS.boneDim, fontSize: 13.5 }}>Loading…</div>;
+
+  return (
+    <div>
+      <div style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Plans</div>
+      <div style={{ fontSize: 13, color: COLORS.boneDim, marginBottom: 6, maxWidth: 560 }}>
+        Set the "typical return" text shown on each plan's card in the client dashboard. Leave a field blank to
+        show nothing for that tier. This is always paired with a "past performance, not a guarantee" disclaimer —
+        keep it honest and based on real results, since it's a real claim clients will see.
+      </div>
+      {error && <div style={{ color: COLORS.loss, fontSize: 13, marginBottom: 16 }}>{error}</div>}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 560, marginTop: 16 }}>
+        {tiers.map((tier) => (
+          <div
+            key={tier.key}
+            style={{
+              background: COLORS.panel,
+              border: `1px solid ${COLORS.panelBorder}`,
+              borderRadius: 12,
+              padding: 16,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+              <div style={{ fontSize: 14.5, fontWeight: 700 }}>{tier.name}</div>
+              <div className="mono" style={{ fontSize: 11.5, color: COLORS.boneDim }}>
+                ${tier.minUsd.toLocaleString()}–${tier.maxUsd.toLocaleString()} · {tier.tierMonths}mo
+              </div>
+            </div>
+            <input
+              type="text"
+              value={drafts[tier.key] ?? ""}
+              onChange={(e) => setDrafts((d) => ({ ...d, [tier.key]: e.target.value }))}
+              placeholder="e.g. Historically 5–12% over the lock-up period"
+              maxLength={300}
+              style={{
+                width: "100%",
+                background: COLORS.ink,
+                border: `1px solid ${COLORS.panelBorder}`,
+                borderRadius: 8,
+                padding: "9px 12px",
+                fontSize: 13,
+                color: COLORS.bone,
+                marginBottom: 10,
+              }}
+            />
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                onClick={() => save(tier.key)}
+                disabled={savingKey === tier.key}
+                style={{ ...primaryBtnStyle, opacity: savingKey === tier.key ? 0.6 : 1 }}
+              >
+                {savingKey === tier.key ? "Saving…" : "Save"}
+              </button>
+              {savedKey === tier.key && <span style={{ fontSize: 12, color: COLORS.gain }}>Saved</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ReconciliationPanel({ totals, records, onSubmit, btcPrice }) {
   const [actual, setActual] = useState("");
   const [note, setNote] = useState("");
@@ -1278,7 +1539,7 @@ function ReconciliationPanel({ totals, records, onSubmit, btcPrice }) {
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14, marginBottom: 24 }}>
         <StatCard label="Expected holdings (ledger)" value={fmtUSD(totals.expectedHoldings)} />
         <StatCard
           label="≈ BTC at current price"
@@ -1337,7 +1598,8 @@ function ReconciliationPanel({ totals, records, onSubmit, btcPrice }) {
             History
           </div>
           <div style={{ border: `1px solid ${COLORS.panelBorder}`, borderRadius: 10, overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: COLORS.panel }}>
                   {["Date", "Expected", "Actual", "Difference", "Note"].map((h) => (
@@ -1362,6 +1624,7 @@ function ReconciliationPanel({ totals, records, onSubmit, btcPrice }) {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </>
       )}
@@ -1423,7 +1686,24 @@ function StatCard({ label, value, color }) {
   );
 }
 
-function ClientPanel({ client, onAddTrade, onAddDeposit, onAddWithdrawal, onMarkProcessed, onDownloadStatement, onCloseTrade, btcPrice }) {
+function ClientPanel({
+  client,
+  onAddTrade,
+  onAddDeposit,
+  onAddWithdrawal,
+  onMarkProcessed,
+  onDownloadStatement,
+  onCloseTrade,
+  onEditDeposit,
+  onDeleteDeposit,
+  onEditWithdrawal,
+  onDeleteWithdrawal,
+  onEditTrade,
+  onDeleteTrade,
+  onBlockClient,
+  onDeleteClient,
+  btcPrice,
+}) {
   const deposited = totalDeposited(client);
   const pnl = clientPnL(client);
   const withdrawn = totalProcessedWithdrawn(client);
@@ -1456,9 +1736,26 @@ function ClientPanel({ client, onAddTrade, onAddDeposit, onAddWithdrawal, onMark
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: -0.3 }}>{client.name}</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: -0.3 }}>{client.name}</h1>
+            {client.blocked && (
+              <span
+                style={{
+                  fontSize: 11,
+                  color: COLORS.loss,
+                  background: "rgba(232,96,76,0.1)",
+                  border: `1px solid rgba(232,96,76,0.3)`,
+                  borderRadius: 5,
+                  padding: "3px 8px",
+                  fontWeight: 600,
+                }}
+              >
+                Blocked
+              </span>
+            )}
+          </div>
           <p style={{ color: COLORS.boneDim, fontSize: 13, marginTop: 4 }}>
             {client.contact} {client.walletRef ? `· ${client.walletRef}` : ""}
           </p>
@@ -1496,7 +1793,7 @@ function ClientPanel({ client, onAddTrade, onAddDeposit, onAddWithdrawal, onMark
             )}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button onClick={() => handleDownload("pdf")} disabled={downloading} style={{ ...secondaryBtnStyle, opacity: downloading ? 0.6 : 1 }}>
             <Download size={14} /> PDF
           </button>
@@ -1512,10 +1809,30 @@ function ClientPanel({ client, onAddTrade, onAddDeposit, onAddWithdrawal, onMark
           <button onClick={onAddTrade} style={primaryBtnStyle}>
             <Plus size={14} /> Log trade
           </button>
+          <button
+            onClick={() => {
+              if (window.confirm(client.blocked ? `Unblock ${client.name}? They'll be able to log in again.` : `Block ${client.name}? They won't be able to log in until unblocked.`)) {
+                onBlockClient(!client.blocked);
+              }
+            }}
+            style={{ ...secondaryBtnStyle, color: client.blocked ? COLORS.gain : COLORS.signal, borderColor: client.blocked ? "rgba(61,220,151,0.4)" : "rgba(242,184,75,0.4)" }}
+          >
+            <ShieldAlert size={14} /> {client.blocked ? "Unblock" : "Block"}
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm(`Permanently delete ${client.name}? This only works if they have no financial history.`)) {
+                onDeleteClient();
+              }
+            }}
+            style={{ ...secondaryBtnStyle, color: COLORS.loss, borderColor: "rgba(232,96,76,0.4)" }}
+          >
+            <Trash2 size={14} /> Delete
+          </button>
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14, marginBottom: 14 }}>
         <StatCard label="Deposited" value={fmtUSD(deposited)} />
         <StatCard label="Withdrawn" value={fmtUSD(withdrawn)} />
         <StatCard label="Balance" value={fmtUSD(balance)} />
@@ -1580,30 +1897,78 @@ function ClientPanel({ client, onAddTrade, onAddDeposit, onAddWithdrawal, onMark
         <div style={{ color: COLORS.boneDim, fontSize: 13.5, padding: "24px 0" }}>No activity logged for this client yet.</div>
       ) : (
         <div style={{ border: `1px solid ${COLORS.panelBorder}`, borderRadius: 10, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ background: COLORS.panel }}>
-                {["Type", "Detail", "Amount", "Tx hash", "Date"].map((h) => (
-                  <th key={h} style={theadCellStyle}>
-                    {h}
-                  </th>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: COLORS.panel }}>
+                  {["Type", "Detail", "Amount", "Tx hash", "Date", "Actions"].map((h) => (
+                    <th key={h} style={theadCellStyle}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((item) => (
+                  <HistoryRow
+                    key={`${item.type}-${item.id}`}
+                    item={item}
+                    onEditDeposit={onEditDeposit}
+                    onDeleteDeposit={onDeleteDeposit}
+                    onEditWithdrawal={onEditWithdrawal}
+                    onDeleteWithdrawal={onDeleteWithdrawal}
+                    onEditTrade={onEditTrade}
+                    onDeleteTrade={onDeleteTrade}
+                  />
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((item) => (
-                <HistoryRow key={`${item.type}-${item.id}`} item={item} />
-              ))}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function HistoryRow({ item }) {
+function HistoryRow({ item, onEditDeposit, onDeleteDeposit, onEditWithdrawal, onDeleteWithdrawal, onEditTrade, onDeleteTrade }) {
+  const [editing, setEditing] = useState(false);
+  const [draftAmount, setDraftAmount] = useState(item.amount);
+  const [draftExtra, setDraftExtra] = useState(item.type === "withdrawal" ? item.destination || "" : "");
+  const [saving, setSaving] = useState(false);
+
   if (item.type === "deposit") {
+    if (editing) {
+      return (
+        <tr style={{ borderBottom: `1px solid ${COLORS.panelBorder}`, background: COLORS.panel }}>
+          <td style={cellStyle} colSpan={6}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, color: COLORS.boneDim }}>Amount</span>
+              <input
+                type="number"
+                value={draftAmount}
+                onChange={(e) => setDraftAmount(e.target.value)}
+                style={{ ...inlineInputStyle, width: 110 }}
+              />
+              <button
+                disabled={saving}
+                onClick={async () => {
+                  setSaving(true);
+                  await onEditDeposit(item.id, { amountUsd: parseFloat(draftAmount) });
+                  setSaving(false);
+                  setEditing(false);
+                }}
+                style={{ ...primaryBtnStyle, padding: "6px 12px", fontSize: 12 }}
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+              <button onClick={() => setEditing(false)} style={{ ...secondaryBtnStyle, padding: "6px 12px", fontSize: 12 }}>
+                Cancel
+              </button>
+            </div>
+          </td>
+        </tr>
+      );
+    }
     return (
       <tr style={{ borderBottom: `1px solid ${COLORS.panelBorder}` }}>
         <td style={cellStyle}>
@@ -1617,11 +1982,58 @@ function HistoryRow({ item }) {
           {truncateHash(item.txHash)}
         </td>
         <td style={{ ...cellStyle, color: COLORS.boneDim, fontSize: 12 }}>{new Date(item.date).toLocaleDateString()}</td>
+        <td style={cellStyle}>
+          <RowActions
+            onEdit={() => setEditing(true)}
+            onDelete={() => {
+              if (window.confirm("Delete this deposit? This lowers the client's balance.")) onDeleteDeposit(item.id);
+            }}
+          />
+        </td>
       </tr>
     );
   }
   if (item.type === "withdrawal") {
-    const isSubscriptionFee = item.destination === "SUBSCRIPTION_FEE";
+    const isSubscriptionFee = item.destination === "SUBSCRIPTION_FEE" || item.destination === "PERFORMANCE_FEE";
+    if (editing) {
+      return (
+        <tr style={{ borderBottom: `1px solid ${COLORS.panelBorder}`, background: COLORS.panel }}>
+          <td style={cellStyle} colSpan={6}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, color: COLORS.boneDim }}>Amount</span>
+              <input
+                type="number"
+                value={draftAmount}
+                onChange={(e) => setDraftAmount(e.target.value)}
+                style={{ ...inlineInputStyle, width: 110 }}
+              />
+              <span style={{ fontSize: 12, color: COLORS.boneDim }}>Destination</span>
+              <input
+                type="text"
+                value={draftExtra}
+                onChange={(e) => setDraftExtra(e.target.value)}
+                style={{ ...inlineInputStyle, width: 160 }}
+              />
+              <button
+                disabled={saving}
+                onClick={async () => {
+                  setSaving(true);
+                  await onEditWithdrawal(item.id, { amountUsd: parseFloat(draftAmount), destination: draftExtra });
+                  setSaving(false);
+                  setEditing(false);
+                }}
+                style={{ ...primaryBtnStyle, padding: "6px 12px", fontSize: 12 }}
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+              <button onClick={() => setEditing(false)} style={{ ...secondaryBtnStyle, padding: "6px 12px", fontSize: 12 }}>
+                Cancel
+              </button>
+            </div>
+          </td>
+        </tr>
+      );
+    }
     return (
       <tr style={{ borderBottom: `1px solid ${COLORS.panelBorder}` }}>
         <td style={cellStyle}>
@@ -1639,11 +2051,56 @@ function HistoryRow({ item }) {
           {truncateHash(item.txHash)}
         </td>
         <td style={{ ...cellStyle, color: COLORS.boneDim, fontSize: 12 }}>{new Date(item.date).toLocaleDateString()}</td>
+        <td style={cellStyle}>
+          {isSubscriptionFee ? (
+            <span style={{ fontSize: 11, color: COLORS.boneDim }}>Edit the trade/plan</span>
+          ) : (
+            <RowActions
+              onEdit={() => setEditing(true)}
+              onDelete={() => {
+                if (window.confirm("Delete this withdrawal record?")) onDeleteWithdrawal(item.id);
+              }}
+            />
+          )}
+        </td>
       </tr>
     );
   }
   // trade
   const p = tradePnL(item);
+  if (editing) {
+    return (
+      <tr style={{ borderBottom: `1px solid ${COLORS.panelBorder}`, background: COLORS.panel }}>
+        <td style={cellStyle} colSpan={6}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12, color: COLORS.boneDim }}>Exit price</span>
+            <input
+              type="number"
+              value={draftAmount}
+              onChange={(e) => setDraftAmount(e.target.value)}
+              placeholder="Exit price"
+              style={{ ...inlineInputStyle, width: 110 }}
+            />
+            <button
+              disabled={saving}
+              onClick={async () => {
+                setSaving(true);
+                await onEditTrade(item.id, { exit: parseFloat(draftAmount) });
+                setSaving(false);
+                setEditing(false);
+              }}
+              style={{ ...primaryBtnStyle, padding: "6px 12px", fontSize: 12 }}
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button onClick={() => setEditing(false)} style={{ ...secondaryBtnStyle, padding: "6px 12px", fontSize: 12 }}>
+              Cancel
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
   return (
     <tr style={{ borderBottom: `1px solid ${COLORS.panelBorder}` }}>
       <td style={cellStyle}>
@@ -1658,9 +2115,52 @@ function HistoryRow({ item }) {
       </td>
       <td style={{ ...cellStyle, color: COLORS.boneDim, fontSize: 11.5 }}>—</td>
       <td style={{ ...cellStyle, color: COLORS.boneDim, fontSize: 12 }}>{new Date(item.date).toLocaleDateString()}</td>
+      <td style={cellStyle}>
+        <RowActions
+          onEdit={() => setEditing(true)}
+          onDelete={() => {
+            if (window.confirm("Delete this trade? Any linked performance fee is removed too.")) onDeleteTrade(item.id);
+          }}
+        />
+      </td>
     </tr>
   );
 }
+
+const inlineInputStyle = {
+  background: COLORS.ink,
+  border: `1px solid ${COLORS.panelBorder}`,
+  borderRadius: 6,
+  padding: "6px 8px",
+  fontSize: 12.5,
+  color: COLORS.bone,
+};
+
+function RowActions({ onEdit, onDelete }) {
+  return (
+    <div style={{ display: "flex", gap: 6 }}>
+      <button onClick={onEdit} aria-label="Edit" style={rowIconBtnStyle}>
+        <Pencil size={13} />
+      </button>
+      <button onClick={onDelete} aria-label="Delete" style={{ ...rowIconBtnStyle, color: COLORS.loss }}>
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
+const rowIconBtnStyle = {
+  background: "transparent",
+  border: `1px solid ${COLORS.panelBorder}`,
+  borderRadius: 6,
+  width: 26,
+  height: 26,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: COLORS.boneDim,
+  cursor: "pointer",
+};
 
 function TypeBadge({ label, color }) {
   return (

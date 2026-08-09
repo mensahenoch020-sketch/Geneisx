@@ -94,6 +94,14 @@ export async function createDeposit({ clientId, amountUsd, txHash }) {
   return request("/api/deposits", { method: "POST", body: { clientId, amountUsd, txHash } });
 }
 
+export async function editDeposit(id, changes) {
+  return request(`/api/deposits/${encodeURIComponent(id)}`, { method: "PATCH", body: changes });
+}
+
+export async function deleteDeposit(id) {
+  return request(`/api/deposits/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 // ---------- Withdrawals ----------
 export async function createWithdrawal({ clientId, amountUsd, destination }) {
   return request("/api/withdrawals", { method: "POST", body: { clientId, amountUsd, destination } });
@@ -108,6 +116,14 @@ export async function processWithdrawal(id, txHash) {
 
 export async function cancelWithdrawal(id) {
   return request(`/api/withdrawals/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+}
+
+export async function editWithdrawal(id, changes) {
+  return request(`/api/withdrawals/${encodeURIComponent(id)}`, { method: "PATCH", body: changes });
+}
+
+export async function deleteWithdrawal(id) {
+  return request(`/api/withdrawals/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 // ---------- Trades ----------
@@ -127,6 +143,35 @@ export async function createTrade({ clientId, asset, side, size, entry, exit }) 
 
 export async function closeTrade(id, exit) {
   return request(`/api/trades/${encodeURIComponent(id)}/close`, { method: "POST", body: { exit } });
+}
+
+export async function editTrade(id, changes) {
+  return request(`/api/trades/${encodeURIComponent(id)}`, { method: "PATCH", body: changes });
+}
+
+export async function deleteTrade(id) {
+  return request(`/api/trades/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+// ---------- Clients ----------
+export async function blockClient(id, blocked) {
+  return request(`/api/clients/${encodeURIComponent(id)}/block`, { method: "POST", body: { blocked } });
+}
+
+export async function deleteClient(id) {
+  return request(`/api/clients/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+// ---------- Tier return estimates ----------
+export async function getTierReturnEstimates() {
+  return request("/api/tier-return-estimates");
+}
+
+export async function setTierReturnEstimate(tierKey, text) {
+  return request(`/api/tier-return-estimates/${encodeURIComponent(tierKey)}`, {
+    method: "PUT",
+    body: { text },
+  });
 }
 
 // ---------- Reconciliation ----------
