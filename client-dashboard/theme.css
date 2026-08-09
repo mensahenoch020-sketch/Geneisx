@@ -17,6 +17,29 @@
   --amber-warn:#B8790F;
   --amber-bg:#FBF1E1;
   --loss:#DC4C3F;
+  --nav-bg:rgba(255,255,255,0.85);
+  --scrim:rgba(18,24,21,0.03);
+}
+
+/* Dark mode — the site's original palette, kept exactly as it was before the
+   light-theme rework, so switching back looks intentional rather than like a
+   worse version of the light theme. Toggled by adding data-theme="dark" to
+   <html> — see ThemeToggle.jsx / theme.js. */
+[data-theme="dark"]{
+  --page-bg:#070A08;
+  --ink:#E7EFE9;
+  --panel:#0E1510;
+  --panel-border:#1C2A20;
+  --bone:#E7EFE9;
+  --dim:#8CA294;
+  --green:#3FE28E;
+  --green-dim:#1E8F5B;
+  --green-bg:rgba(63,226,142,0.12);
+  --amber-warn:#E8B84C;
+  --amber-bg:rgba(232,184,76,0.1);
+  --loss:#e8604c;
+  --nav-bg:rgba(7,10,8,0.75);
+  --scrim:rgba(255,255,255,0.03);
 }
 *{box-sizing:border-box; margin:0; padding:0;}
 html{scroll-behavior:smooth;}
@@ -40,7 +63,7 @@ nav.site-nav{
   position:fixed; top:0; left:0; right:0; z-index:100;
   display:flex; align-items:center; justify-content:space-between;
   padding:18px 28px;
-  background:rgba(255,255,255,0.85);
+  background:var(--nav-bg);
   backdrop-filter:blur(10px);
   border-bottom:1px solid var(--panel-border);
   box-shadow:0 1px 2px rgba(18,24,21,0.03);
@@ -204,7 +227,7 @@ h1 .accent{color:var(--green);}
 
 .news-list{margin-top:20px; display:flex; flex-direction:column; gap:1px; background:var(--panel-border); border-radius:14px; overflow:hidden; border:1px solid var(--panel-border); box-shadow:0 1px 2px rgba(18,24,21,0.04), 0 8px 24px rgba(18,24,21,0.05);}
 .news-item{background:var(--panel); padding:16px 20px; display:flex; justify-content:space-between; gap:16px; align-items:flex-start; text-decoration:none;}
-.news-item:hover{background:rgba(18,24,21,0.03);}
+.news-item:hover{background:var(--scrim);}
 .news-title{font-size:13.5px; color:var(--bone); line-height:1.5;}
 .news-source{font-size:11.5px; color:var(--dim); margin-top:4px; font-family:'IBM Plex Mono', monospace;}
 
@@ -264,6 +287,34 @@ footer{border-top:1px solid var(--panel-border); padding:48px 24px; font-size:12
   --dash-amber:#B8790F;
   --dash-amber-bg:#FBF1E1;
   --dash-shadow:0 1px 2px rgba(18,24,21,0.04), 0 8px 24px rgba(18,24,21,0.05);
+  --dash-mobile-bar-bg:rgba(255,255,255,0.92);
+  --dash-logout-hover-bg:#FBDCD7;
+  --dash-logout-hover-border:#EDA79D;
+  --dash-logout-border:#F2BDB5;
+}
+
+/* Dark mode for the dashboard shell (sidebar/chrome) — matches the DARK
+   palette in dashboard/shared.jsx exactly, since that's what the page
+   content inside .dash-content is themed with via the same toggle. Both are
+   driven by the one data-theme="dark" attribute / localStorage key — see
+   DashboardShell.jsx's toggleDashTheme. */
+[data-theme="dark"]{
+  --dash-bg:#070A08;
+  --dash-surface:#0E1510;
+  --dash-border:#1C2A20;
+  --dash-ink:#E7EFE9;
+  --dash-dim:#8CA294;
+  --dash-green:#3FE28E;
+  --dash-green-bg:rgba(63,226,142,0.12);
+  --dash-loss:#e8604c;
+  --dash-loss-bg:rgba(232,96,76,0.12);
+  --dash-amber:#E8B84C;
+  --dash-amber-bg:rgba(232,184,76,0.1);
+  --dash-shadow:0 1px 2px rgba(0,0,0,0.2), 0 8px 24px rgba(0,0,0,0.3);
+  --dash-mobile-bar-bg:rgba(7,10,8,0.85);
+  --dash-logout-hover-bg:rgba(232,96,76,0.2);
+  --dash-logout-hover-border:rgba(232,96,76,0.5);
+  --dash-logout-border:rgba(232,96,76,0.4);
 }
 
 .dash-shell{
@@ -328,11 +379,11 @@ footer{border-top:1px solid var(--panel-border); padding:48px 24px; font-size:12
    unambiguous to tap. */
 .dash-logout-btn{
   display:flex; align-items:center; justify-content:center; gap:9px;
-  width:100%; background:var(--dash-loss-bg); border:1px solid #F2BDB5;
+  width:100%; background:var(--dash-loss-bg); border:1px solid var(--dash-logout-border);
   color:var(--dash-loss); font-size:14.5px; font-weight:600;
   padding:12px 10px; border-radius:10px; cursor:pointer;
 }
-.dash-logout-btn:hover{ background:#FBDCD7; border-color:#EDA79D; }
+.dash-logout-btn:hover{ background:var(--dash-logout-hover-bg); border-color:var(--dash-logout-hover-border); }
 
 /* Sparkline shown inline in list rows once there's room for it. */
 @media (min-width:640px){
@@ -374,7 +425,7 @@ footer{border-top:1px solid var(--panel-border); padding:48px 24px; font-size:12
   .dash-mobile-bar{
     display:flex; align-items:center; justify-content:space-between;
     position:fixed; top:0; left:0; right:0; z-index:150;
-    background:rgba(255,255,255,0.92); backdrop-filter:blur(10px);
+    background:var(--dash-mobile-bar-bg); backdrop-filter:blur(10px);
     border-bottom:1px solid var(--dash-border); padding:14px 16px;
   }
   .dash-mobile-brand{ display:flex; align-items:center; gap:8px; font-weight:700; font-size:15px; }

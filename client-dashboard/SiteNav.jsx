@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { LogOut, Settings, Menu, X } from "lucide-react";
+import ThemeToggle from "./ThemeToggle.jsx";
 
 // One shared nav for the whole site — marketing pages and the logged-in
 // dashboard both render this, so there's a single consistent header instead
@@ -63,7 +64,12 @@ export default function SiteNav({ authed, onNavigate, onLogout }) {
       </Link>
 
       <div className="nav-links">{links}</div>
-      <div className="nav-cta-wrap">{cta}</div>
+      <div className="nav-cta-wrap">
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <ThemeToggle />
+          {cta}
+        </div>
+      </div>
 
       <button
         className="nav-hamburger"
@@ -77,7 +83,10 @@ export default function SiteNav({ authed, onNavigate, onLogout }) {
       {open && (
         <div className="nav-mobile-menu">
           <div className="nav-mobile-links">{links}</div>
-          <div className="nav-mobile-cta">{cta}</div>
+          <div className="nav-mobile-cta" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <ThemeToggle />
+            {cta}
+          </div>
         </div>
       )}
     </nav>
